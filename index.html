@@ -1,0 +1,1099 @@
+<!DOCTYPE html>
+<html lang="ko">
+<head>
+  <meta charset="UTF-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1.0">
+  <title>KRX 실전 모의주식 - 한국거래소 실시간 교실 시뮬레이터</title>
+  <script src="https://cdn.tailwindcss.com"></script>
+  <link rel="stylesheet" href="https://cdnjs.cloudflare.com/ajax/libs/font-awesome/6.5.1/css/all.min.css">
+  <script src="https://cdnjs.cloudflare.com/ajax/libs/qrcodejs/1.0.0/qrcode.min.js"></script>
+  <script>
+    tailwind.config = {
+      theme: {
+        extend: {
+          fontFamily: {
+            sans: ['Pretendard', '-apple-system', 'BlinkMacSystemFont', 'Segoe UI', 'Roboto', 'sans-serif'],
+          }
+        }
+      }
+    };
+  </script>
+  <style>
+    ::-webkit-scrollbar { width: 4px; height: 4px; }
+    ::-webkit-scrollbar-track { background: #f8fafc; border-radius: 4px; }
+    ::-webkit-scrollbar-thumb { background: #cbd5e1; border-radius: 4px; }
+    ::-webkit-scrollbar-thumb:hover { background: #94a3b8; }
+    .no-scrollbar::-webkit-scrollbar { display: none; }
+    .no-scrollbar { -ms-overflow-style: none; scrollbar-width: none; }
+    .num-font { font-feature-settings: "tnum"; font-variant-numeric: tabular-nums; }
+    html, body { height: 100vh; width: 100vw; margin: 0; padding: 0; overflow: hidden; user-select: none; font-size: 13px; }
+  </style>
+</head>
+<body class="bg-slate-100 text-slate-800 font-sans flex flex-col h-screen w-screen overflow-hidden antialiased">
+  <!-- 상단 글로벌 헤더 -->
+  <header class="h-12 bg-white border-b border-slate-200 px-3 flex items-center justify-between flex-shrink-0 z-20 shadow-xs">
+    <div class="flex items-center gap-2">
+      <div onclick="handleSecretTeacherTrigger()" title="실전 모의주식 (교사는 5회 클릭 또는 Ctrl+1)" class="w-8 h-8 rounded-lg bg-gradient-to-tr from-rose-500 to-indigo-600 flex items-center justify-center text-white shadow-xs text-sm font-black cursor-pointer select-none">
+        <i class="fa-solid fa-chart-line"></i>
+      </div>
+      <div>
+        <div class="flex items-center gap-1.5">
+          <h1 class="font-black text-sm md:text-base text-slate-900 tracking-tight">실전 모의주식</h1>
+          <span class="px-1.5 py-0.5 rounded text-[11px] font-extrabold bg-indigo-50 text-indigo-700 border border-indigo-200">KRX 단독 실행형</span>
+        </div>
+      </div>
+      <button id="headerQRBtn" onclick="openQRModal()" class="hidden ml-1 px-2.5 py-1 rounded-lg bg-indigo-50 hover:bg-indigo-100 text-indigo-700 text-xs font-black border border-indigo-200 flex items-center gap-1.5 shadow-2xs transition cursor-pointer">
+        <i class="fa-solid fa-qrcode"></i>
+        <span id="headerRoomBadge">반별 QR코드</span>
+      </button>
+    </div>
+
+    <!-- 실시간 인원 -->
+    <div class="flex items-center gap-1.5 px-2.5 py-1 rounded-lg bg-emerald-50 border border-emerald-200 text-xs font-extrabold text-emerald-800">
+      <i class="fa-solid fa-users text-emerald-600"></i>
+      <span>참여:</span>
+      <span id="headerLiveCount" class="font-mono text-emerald-950 font-black">1</span><span>명</span>
+      <span class="w-2 h-2 rounded-full bg-emerald-500 animate-ping"></span>
+    </div>
+
+    <!-- 정규장 타이머 -->
+    <div class="flex items-center gap-2 bg-slate-50 border border-slate-200 rounded-xl px-2.5 py-1">
+      <div class="flex items-center gap-1.5">
+        <span id="marketDot" class="w-2 h-2 rounded-full bg-amber-500 animate-pulse"></span>
+        <span id="marketStatusText" class="text-xs font-black text-slate-700">개장 대기</span>
+      </div>
+      <div class="h-3.5 w-px bg-slate-300"></div>
+      <div class="flex items-center gap-1">
+        <i class="fa-regular fa-clock text-slate-400 text-xs"></i>
+        <span id="marketTimerText" class="text-xs md:text-sm font-black font-mono text-amber-600 num-font tracking-tight">10:00</span>
+      </div>
+    </div>
+
+    <!-- 유저 프로필 & 자산 -->
+    <div class="flex items-center gap-2">
+      <button onclick="openLoginModal()" class="flex items-center gap-1.5 px-2.5 py-1 rounded-lg bg-indigo-50 hover:bg-indigo-100 border border-indigo-200 text-left transition cursor-pointer">
+        <div class="w-6 h-6 rounded-md bg-indigo-600 text-white flex items-center justify-center text-xs font-black">
+          <i class="fa-solid fa-graduation-cap"></i>
+        </div>
+        <div>
+          <div id="headerStudentName" class="text-xs font-black text-indigo-950 leading-tight">로그인 대기</div>
+          <div id="headerStudentClass" class="text-[10px] font-bold text-indigo-600">계좌 미개설</div>
+        </div>
+      </button>
+
+      <div class="hidden sm:flex items-center gap-2 bg-slate-50 border border-slate-200 rounded-lg px-2.5 py-1">
+        <div class="text-right">
+          <div class="text-[10px] font-bold text-slate-400">총 자산</div>
+          <div id="headerTotalAsset" class="text-xs font-black text-slate-800 num-font">10,000,000원</div>
+        </div>
+        <div class="h-4 w-px bg-slate-200"></div>
+        <div class="text-right">
+          <div class="text-[10px] font-bold text-slate-400">수익률</div>
+          <div id="headerTotalRate" class="text-xs font-black text-slate-600 num-font">0.00%</div>
+        </div>
+      </div>
+    </div>
+  </header>
+
+  <!-- 뉴스 티커 -->
+  <div class="h-8 bg-slate-900 border-b border-slate-800 px-3 flex items-center justify-between text-white flex-shrink-0 z-10 shadow-xs">
+    <div class="flex items-center gap-2">
+      <div class="flex items-center gap-1 px-2 py-0.5 rounded bg-gradient-to-r from-rose-600 to-indigo-600 text-[11px] font-black">
+        <i class="fa-solid fa-bullhorn text-[10px]"></i>
+        <span>뉴스 속보</span>
+      </div>
+      <span class="w-2 h-2 rounded-full bg-emerald-400 animate-pulse"></span>
+    </div>
+    <div id="topNewsText" class="flex-1 mx-3 truncate text-xs font-bold text-slate-200">
+      엔비디아 AI 가속기 및 차세대 HBM 수주 폭주... SK하이닉스·한미반도체 수출 실적 기대
+    </div>
+    <div class="text-[11px] font-mono text-slate-400">KRX 틱 연동</div>
+  </div>
+
+  <!-- 메인 레이아웃 -->
+  <main class="flex-1 min-h-0 p-2 grid grid-cols-12 gap-2 overflow-hidden">
+    <!-- 좌측 종목 탐색 -->
+    <section class="col-span-12 md:col-span-4 xl:col-span-3 bg-white rounded-2xl border border-slate-200 flex flex-col min-h-0 overflow-hidden shadow-2xs">
+      <div class="p-2 border-b border-slate-100 flex flex-col gap-1.5 bg-slate-50/70 flex-shrink-0">
+        <div class="flex items-center justify-between">
+          <span class="text-xs font-black text-slate-800">대표 종목 탐색</span>
+          <span id="stockCountBadge" class="text-[11px] font-bold text-indigo-600 bg-indigo-50 border border-indigo-200 px-2 py-0.5 rounded-full">100개사</span>
+        </div>
+        <div id="categoryContainer" class="flex gap-1 overflow-x-auto no-scrollbar py-0.5"></div>
+        <div class="relative">
+          <i class="fa-solid fa-magnifying-glass absolute left-2.5 top-2 text-slate-400 text-xs"></i>
+          <input id="searchInput" oninput="handleSearch(this.value)" type="text" placeholder="종목명/상품 검색" class="w-full pl-8 pr-2 py-1 bg-white border border-slate-200 rounded-lg text-xs font-semibold focus:outline-none focus:border-indigo-500">
+        </div>
+      </div>
+      <div id="stockListContainer" class="flex-1 min-h-0 overflow-y-auto divide-y divide-slate-100 pb-16"></div>
+    </section>
+
+    <!-- 중앙 기업 상세 & 차트 -->
+    <section class="col-span-12 md:col-span-5 xl:col-span-6 flex flex-col min-h-0 gap-2 overflow-hidden">
+      <div class="bg-white rounded-2xl border border-slate-200 p-3 flex flex-col gap-1.5 shadow-2xs flex-shrink-0">
+        <div class="flex items-start justify-between gap-1">
+          <div>
+            <div class="flex items-center gap-2 flex-wrap">
+              <span id="detailIcon" class="text-2xl">📱</span>
+              <h2 id="detailName" class="text-lg font-black text-slate-900 tracking-tight">삼성전자</h2>
+              <span id="detailCode" class="text-[11px] font-mono font-bold text-slate-400 bg-slate-100 px-1.5 py-0.5 rounded">005930</span>
+              <span id="detailCat" class="text-[11px] font-bold text-indigo-700 bg-indigo-50 border border-indigo-200 px-2 py-0.5 rounded-full">IT/반도체</span>
+            </div>
+            <div class="flex items-baseline gap-2 mt-1">
+              <span id="detailPrice" class="text-2xl md:text-3xl font-black text-rose-600 num-font">284,000원</span>
+              <span id="detailRate" class="text-xs md:text-sm font-black text-rose-600 num-font">+7,500 (+2.71%)</span>
+            </div>
+          </div>
+          <div class="text-right flex-shrink-0">
+            <div class="text-[10px] font-bold text-slate-400">KRX 가격제한폭 (±30%)</div>
+            <div class="flex items-center gap-1 mt-0.5">
+              <span id="detailBase" class="text-[10px] font-black text-slate-600 bg-slate-100 border border-slate-200 px-1.5 py-0.5 rounded num-font">기준 284,000</span>
+              <span id="detailLimitHigh" class="text-[10px] font-black text-rose-600 bg-rose-50 border border-rose-200 px-1.5 py-0.5 rounded num-font">상 369,000</span>
+              <span id="detailLimitLow" class="text-[10px] font-black text-blue-600 bg-blue-50 border border-blue-200 px-1.5 py-0.5 rounded num-font">하 199,000</span>
+            </div>
+          </div>
+        </div>
+        <p id="detailDesc" class="text-xs font-medium text-slate-700 bg-slate-50 p-2 rounded-xl border border-slate-100 leading-snug truncate">
+          갤럭시 스마트폰, DRAM, 초고성능 HBM 메모리를 만드는 한국 시가총액 1위 대표 기업입니다.
+        </p>
+        <div class="space-y-0.5 pt-0.5">
+          <div class="flex justify-between text-[10px] font-black">
+            <span class="text-blue-600">하한가 (-30%)</span>
+            <span class="text-slate-500 font-bold">기준가 (0%)</span>
+            <span class="text-rose-600">상한가 (+30%)</span>
+          </div>
+          <div class="w-full h-1.5 bg-slate-100 rounded-full overflow-hidden flex border border-slate-200">
+            <div id="gaugeBar" class="h-full bg-gradient-to-r from-blue-500 via-slate-300 to-rose-500 rounded-full transition-all duration-300" style="width: 50%;"></div>
+          </div>
+        </div>
+      </div>
+
+      <div class="flex-1 min-h-0 bg-white rounded-2xl border border-slate-200 p-2.5 flex flex-col shadow-2xs overflow-hidden">
+        <div class="flex items-center justify-between pb-1 border-b border-slate-100 flex-shrink-0">
+          <span class="text-xs font-black text-slate-800 flex items-center gap-1.5">
+            <i class="fa-solid fa-chart-line text-indigo-600"></i> 실시간 틱 차트
+          </span>
+          <span class="text-[11px] font-mono text-slate-500 flex items-center gap-1">
+            <span class="w-2 h-2 rounded-full bg-emerald-500 animate-ping"></span>
+            실시간 갱신 중
+          </span>
+        </div>
+        <div class="flex-1 min-h-0 relative mt-1">
+          <canvas id="stockCanvas" class="w-full h-full block rounded-xl bg-slate-50/70 border border-slate-100"></canvas>
+        </div>
+      </div>
+    </section>
+
+    <!-- 우측 주문 패드 & 포트폴리오 -->
+    <section class="col-span-12 md:col-span-3 xl:col-span-3 flex flex-col min-h-0 gap-2 overflow-hidden">
+      <div class="bg-white rounded-2xl border border-slate-200 p-3 flex flex-col gap-2 shadow-2xs flex-shrink-0">
+        <div class="flex items-center justify-between pb-1 border-b border-slate-100">
+          <span class="text-xs font-black text-slate-800 flex items-center gap-1">
+            <i class="fa-solid fa-bolt text-amber-500"></i> 초간편 주문
+          </span>
+          <span class="text-[11px] font-bold text-emerald-600 bg-emerald-50 px-2 py-0.5 rounded-full border border-emerald-200">즉시 체결</span>
+        </div>
+        <div class="grid grid-cols-2 gap-1.5 text-xs">
+          <div class="bg-slate-50 p-2 rounded-xl border border-slate-100">
+            <div class="text-[10px] font-semibold text-slate-400">주문가능 현금</div>
+            <div id="orderCash" class="font-mono font-black text-slate-900 num-font truncate">10,000,000원</div>
+          </div>
+          <div class="bg-slate-50 p-2 rounded-xl border border-slate-100">
+            <div class="text-[10px] font-semibold text-slate-400">현재 보유량</div>
+            <div id="orderHeld" class="font-mono font-black text-indigo-700 num-font">0주</div>
+          </div>
+        </div>
+        <div class="space-y-1">
+          <div class="flex justify-between text-xs font-bold text-slate-500">
+            <span>주문 수량(주)</span>
+            <span id="orderMaxHint" class="text-indigo-600 font-black">최대 매수: 0주</span>
+          </div>
+          <div class="flex items-center gap-1">
+            <button onclick="changeQty(-10)" class="w-7 h-7 rounded-lg bg-slate-100 hover:bg-slate-200 text-slate-700 font-black text-xs cursor-pointer">-10</button>
+            <button onclick="changeQty(-1)" class="w-7 h-7 rounded-lg bg-slate-100 hover:bg-slate-200 text-slate-700 font-black text-xs cursor-pointer">-1</button>
+            <input id="orderQtyInput" oninput="calculateOrderTotal()" type="number" min="1" value="1" class="flex-1 h-7 bg-white border border-slate-200 rounded-lg text-center font-mono font-black text-xs text-slate-900 focus:outline-none focus:border-indigo-500 num-font">
+            <button onclick="changeQty(1)" class="w-7 h-7 rounded-lg bg-slate-100 hover:bg-slate-200 text-slate-700 font-black text-xs cursor-pointer">+1</button>
+            <button onclick="changeQty(10)" class="w-7 h-7 rounded-lg bg-slate-100 hover:bg-slate-200 text-slate-700 font-black text-xs cursor-pointer">+10</button>
+          </div>
+          <div class="grid grid-cols-4 gap-1">
+            <button onclick="setPercent(0.1)" class="py-1 rounded-lg bg-slate-100 hover:bg-slate-200 text-slate-600 font-black text-[10px] cursor-pointer">10%</button>
+            <button onclick="setPercent(0.25)" class="py-1 rounded-lg bg-slate-100 hover:bg-slate-200 text-slate-600 font-black text-[10px] cursor-pointer">25%</button>
+            <button onclick="setPercent(0.5)" class="py-1 rounded-lg bg-slate-100 hover:bg-slate-200 text-slate-600 font-black text-[10px] cursor-pointer">50%</button>
+            <button onclick="setPercent(1.0)" class="py-1 rounded-lg bg-indigo-50 hover:bg-indigo-100 text-indigo-700 font-black text-[10px] border border-indigo-200 cursor-pointer">최대</button>
+          </div>
+        </div>
+        <div class="p-2 rounded-xl bg-indigo-50/70 border border-indigo-100 flex justify-between items-center text-xs">
+          <span class="font-bold text-indigo-900">총 주문금액</span>
+          <span id="orderTotalCost" class="font-black text-indigo-700 num-font text-xs">284,000원</span>
+        </div>
+        <div class="grid grid-cols-2 gap-2">
+          <button onclick="executeTrade('BUY')" class="h-10 rounded-xl bg-rose-600 hover:bg-rose-700 text-white font-black text-xs flex items-center justify-center gap-1.5 shadow-md transition active:scale-95 cursor-pointer">
+            <i class="fa-solid fa-arrow-trend-up"></i>
+            <span>매수 (사기)</span>
+          </button>
+          <button onclick="executeTrade('SELL')" class="h-10 rounded-xl bg-blue-600 hover:bg-blue-700 text-white font-black text-xs flex items-center justify-center gap-1.5 shadow-md transition active:scale-95 cursor-pointer">
+            <i class="fa-solid fa-arrow-trend-down"></i>
+            <span>매도 (팔기)</span>
+          </button>
+        </div>
+      </div>
+
+      <!-- 포트폴리오 -->
+      <div class="flex-1 min-h-0 bg-white rounded-2xl border border-slate-200 p-3 flex flex-col shadow-2xs overflow-hidden">
+        <div class="flex items-center justify-between pb-1.5 border-b border-slate-100 flex-shrink-0">
+          <span class="text-xs font-black text-slate-800 flex items-center gap-1.5">
+            <i class="fa-solid fa-wallet text-indigo-600"></i> 보유 주식 현황
+          </span>
+          <span id="portfolioCount" class="text-xs font-bold text-slate-500 bg-slate-100 px-2 py-0.5 rounded-full">0종목</span>
+        </div>
+        <div id="portfolioList" class="flex-1 min-h-0 overflow-y-auto divide-y divide-slate-100 pt-1 pb-10"></div>
+      </div>
+    </section>
+  </main>
+
+  <!-- 학생 로그인 모달 -->
+  <div id="loginModal" class="fixed inset-0 bg-slate-900/60 backdrop-blur-xs z-50 flex items-center justify-center p-4">
+    <div class="bg-white rounded-3xl border border-slate-200 shadow-2xl max-w-sm w-full p-6 text-center">
+      <div class="w-12 h-12 rounded-2xl bg-indigo-600 text-white mx-auto flex items-center justify-center text-xl font-black shadow-md mb-3">
+        <i class="fa-solid fa-graduation-cap"></i>
+      </div>
+      <h3 class="text-base font-black text-slate-900 tracking-tight">학생 모의투자 계좌 개설</h3>
+      <p class="text-xs font-medium text-slate-500 mt-1 mb-4">학번과 이름을 입력하고 입장하세요.</p>
+      <form onsubmit="handleLoginSubmit(event)" class="space-y-3.5 text-left">
+        <div class="grid grid-cols-2 gap-2">
+          <div>
+            <label class="block text-xs font-bold text-slate-600 mb-1">학급 (반)</label>
+            <div class="flex items-center gap-1">
+              <span class="text-xs font-black text-slate-700">3학년</span>
+              <input id="inputClass" type="number" min="1" max="20" value="1" required class="flex-1 px-2 py-1.5 bg-slate-50 border border-slate-200 rounded-lg text-xs font-black text-center focus:outline-none focus:border-indigo-500">
+              <span class="text-xs font-black text-slate-700">반</span>
+            </div>
+          </div>
+          <div>
+            <label class="block text-xs font-bold text-slate-600 mb-1">번호</label>
+            <div class="flex items-center gap-1">
+              <input id="inputNumber" type="number" min="1" max="45" value="1" required class="flex-1 px-2 py-1.5 bg-slate-50 border border-slate-200 rounded-lg text-xs font-black text-center focus:outline-none focus:border-indigo-500">
+              <span class="text-xs font-black text-slate-700">번</span>
+            </div>
+          </div>
+        </div>
+        <div>
+          <label class="block text-xs font-bold text-slate-600 mb-1">학생 이름 (실명)</label>
+          <input id="inputName" type="text" placeholder="예: 김민준" required class="w-full px-3 py-2 bg-slate-50 border border-slate-200 rounded-xl text-xs font-bold focus:outline-none focus:border-indigo-500">
+        </div>
+        <div class="bg-indigo-50/80 border border-indigo-100 p-3 rounded-2xl flex items-center justify-between">
+          <span class="text-xs font-black text-indigo-950">초기 투자금</span>
+          <span class="text-xs font-black text-indigo-700 num-font bg-white px-2.5 py-1 rounded-xl border border-indigo-200">10,000,000원</span>
+        </div>
+        <button type="submit" class="w-full py-3 bg-indigo-600 hover:bg-indigo-700 text-white rounded-xl font-black text-xs shadow-md transition active:scale-95 flex items-center justify-center gap-1.5 cursor-pointer">
+          <span>계좌 개설 및 시장 입장</span>
+        </button>
+      </form>
+    </div>
+  </div>
+
+  <!-- 교사용 관제 센터 모달 -->
+  <div id="teacherModal" class="hidden fixed inset-0 z-50 flex items-center justify-center p-3 bg-slate-900/75 backdrop-blur-xs">
+    <div class="bg-white rounded-3xl border border-slate-200 shadow-2xl max-w-5xl w-full p-4 md:p-5 flex flex-col max-h-[95vh] overflow-hidden">
+      <div class="flex items-center justify-between pb-3 border-b border-slate-200 flex-shrink-0">
+        <div class="flex items-center gap-3">
+          <div class="w-10 h-10 rounded-2xl bg-indigo-600 text-white flex items-center justify-center text-sm font-black shadow-md">
+            <i class="fa-solid fa-chalkboard-user"></i>
+          </div>
+          <div>
+            <div class="flex items-center gap-2">
+              <h3 class="text-base font-black text-slate-900">교사용 실시간 관제 센터</h3>
+              <span class="px-2 py-0.5 rounded text-[11px] font-black bg-rose-50 text-rose-700 border border-rose-200">단축키: Ctrl + 1 / F1</span>
+            </div>
+            <p class="text-xs text-slate-500 font-medium">1~60분 시간 설정, 반별 QR코드 입장, 5~10분 랜덤 호재·악재(각 10종) 제어</p>
+          </div>
+        </div>
+        <div class="flex items-center gap-2">
+          <button onclick="openQRModal()" class="px-3 py-1.5 rounded-xl bg-indigo-50 hover:bg-indigo-100 text-indigo-700 text-xs font-black border border-indigo-200 flex items-center gap-1.5 shadow-2xs transition cursor-pointer">
+            <i class="fa-solid fa-qrcode"></i>
+            <span>반별 QR코드 열기</span>
+          </button>
+          <button onclick="toggleTeacherModal(false)" class="w-8 h-8 rounded-xl bg-slate-100 hover:bg-slate-200 text-slate-600 flex items-center justify-center transition cursor-pointer">
+            <i class="fa-solid fa-xmark"></i>
+          </button>
+        </div>
+      </div>
+
+      <!-- 제어 바 -->
+      <div class="my-2.5 p-3 rounded-2xl bg-slate-50 border border-slate-200 flex flex-col gap-2.5 flex-shrink-0">
+        <div class="flex flex-wrap items-center justify-between gap-2">
+          <div class="flex items-center gap-2 flex-wrap">
+            <button id="btnTeacherMarketToggle" onclick="teacherToggleMarket()" class="px-3.5 py-1.5 rounded-xl text-xs font-black shadow-xs transition flex items-center gap-1.5 cursor-pointer text-white bg-emerald-600 hover:bg-emerald-700">
+              <i class="fa-solid fa-play"></i> <span>정규장 개장 (시작)</span>
+            </button>
+            <button onclick="teacherRestartMarket()" class="px-3 py-1.5 bg-slate-700 hover:bg-slate-800 text-white rounded-xl text-xs font-black shadow-xs transition flex items-center gap-1.5 cursor-pointer">
+              <i class="fa-solid fa-rotate-left"></i> <span id="teacherResetText">10분 재설정</span>
+            </button>
+            <button onclick="teacherGiveSubsidy(500000)" class="px-3 py-1.5 bg-indigo-600 hover:bg-indigo-700 text-white rounded-xl text-xs font-black shadow-xs transition flex items-center gap-1.5 cursor-pointer">
+              <i class="fa-solid fa-hand-holding-dollar"></i> <span>전원 지원금 (+50만)</span>
+            </button>
+          </div>
+          <div class="text-xs font-bold text-slate-500">
+            <span>참여 학생: <strong id="teacherStudentCount" class="font-mono font-black text-indigo-700">1명</strong></span>
+          </div>
+        </div>
+
+        <!-- 1~60분 설정 -->
+        <div class="flex flex-wrap items-center justify-between gap-2 pt-2 border-t border-slate-200">
+          <div class="flex items-center gap-2 flex-wrap">
+            <span class="text-xs font-black text-indigo-950 flex items-center gap-1">
+              <i class="fa-regular fa-clock text-indigo-600"></i> 장 운영 시간 (1~60분):
+            </span>
+            <div class="flex items-center bg-white rounded-xl border border-slate-300 shadow-2xs overflow-hidden">
+              <button onclick="adjustMinutes(-1)" class="w-7 h-7 bg-slate-100 hover:bg-slate-200 text-slate-700 font-black text-xs cursor-pointer">-</button>
+              <input id="teacherMinutesInput" oninput="onMinutesInputChange(this.value)" type="number" min="1" max="60" value="10" class="w-12 h-7 text-center text-xs font-black text-indigo-700 bg-white focus:outline-none num-font">
+              <button onclick="adjustMinutes(1)" class="w-7 h-7 bg-slate-100 hover:bg-slate-200 text-slate-700 font-black text-xs cursor-pointer">+</button>
+            </div>
+            <span class="text-xs font-bold text-slate-600">분</span>
+            <div class="flex items-center gap-1 ml-1 flex-wrap">
+              <button onclick="setMinutes(1)" class="px-2 py-0.5 rounded-lg text-xs font-black bg-white hover:bg-indigo-50 text-slate-700 border border-slate-200 cursor-pointer">1분</button>
+              <button onclick="setMinutes(5)" class="px-2 py-0.5 rounded-lg text-xs font-black bg-white hover:bg-indigo-50 text-slate-700 border border-slate-200 cursor-pointer">5분</button>
+              <button onclick="setMinutes(10)" class="px-2 py-0.5 rounded-lg text-xs font-black bg-indigo-600 text-white cursor-pointer">10분</button>
+              <button onclick="setMinutes(20)" class="px-2 py-0.5 rounded-lg text-xs font-black bg-white hover:bg-indigo-50 text-slate-700 border border-slate-200 cursor-pointer">20분</button>
+              <button onclick="setMinutes(40)" class="px-2 py-0.5 rounded-lg text-xs font-black bg-white hover:bg-indigo-50 text-slate-700 border border-slate-200 cursor-pointer">40분</button>
+              <button onclick="setMinutes(45)" class="px-2 py-0.5 rounded-lg text-xs font-black bg-white hover:bg-indigo-50 text-slate-700 border border-slate-200 cursor-pointer">45분</button>
+              <button onclick="setMinutes(60)" class="px-2 py-0.5 rounded-lg text-xs font-black bg-white hover:bg-indigo-50 text-slate-700 border border-slate-200 cursor-pointer">60분</button>
+            </div>
+          </div>
+          <span class="text-[11px] text-slate-400 font-medium">※ 시간 변경 후 [재설정]을 누르면 즉시 동기화됩니다.</span>
+        </div>
+
+        <!-- 초기 투자금 설정 (최소 10만원부터) -->
+        <div class="flex flex-wrap items-center justify-between gap-2 pt-2 border-t border-slate-200">
+          <div class="flex items-center gap-2 flex-wrap">
+            <span class="text-xs font-black text-indigo-950 flex items-center gap-1">
+              <i class="fa-solid fa-coins text-emerald-600"></i> 초기 투자금 (최소 10만원부터 직접 입력):
+            </span>
+            <div class="flex items-center bg-white rounded-xl border border-slate-300 shadow-2xs px-2 py-0.5">
+              <input id="teacherSeedInput" oninput="onSeedInputChange(this.value)" type="number" min="100000" step="50000" value="10000000" class="w-28 text-right text-xs font-black text-emerald-700 bg-transparent focus:outline-none num-font pr-1">
+              <span class="text-xs font-bold text-slate-600">원</span>
+            </div>
+            <div class="flex items-center gap-1 ml-1 flex-wrap">
+              <button onclick="setSeedMoney(100000)" class="px-2 py-0.5 rounded-lg text-xs font-black bg-white hover:bg-emerald-50 text-slate-700 border border-slate-200 cursor-pointer">10만</button>
+              <button onclick="setSeedMoney(500000)" class="px-2 py-0.5 rounded-lg text-xs font-black bg-white hover:bg-emerald-50 text-slate-700 border border-slate-200 cursor-pointer">50만</button>
+              <button onclick="setSeedMoney(1000000)" class="px-2 py-0.5 rounded-lg text-xs font-black bg-white hover:bg-emerald-50 text-slate-700 border border-slate-200 cursor-pointer">100만</button>
+              <button onclick="setSeedMoney(5000000)" class="px-2 py-0.5 rounded-lg text-xs font-black bg-white hover:bg-emerald-50 text-slate-700 border border-slate-200 cursor-pointer">500만</button>
+              <button onclick="setSeedMoney(10000000)" class="px-2 py-0.5 rounded-lg text-xs font-black bg-emerald-600 text-white cursor-pointer">1,000만</button>
+              <button onclick="setSeedMoney(50000000)" class="px-2 py-0.5 rounded-lg text-xs font-black bg-white hover:bg-emerald-50 text-slate-700 border border-slate-200 cursor-pointer">5,000만</button>
+              <button onclick="setSeedMoney(100000000)" class="px-2 py-0.5 rounded-lg text-xs font-black bg-white hover:bg-emerald-50 text-slate-700 border border-slate-200 cursor-pointer">1억</button>
+            </div>
+          </div>
+          <span id="teacherSeedDisplay" class="text-[11px] text-emerald-700 font-bold bg-emerald-50 px-2 py-0.5 rounded-md border border-emerald-200">
+            현재 설정: 10,000,000원
+          </span>
+        </div>
+
+        <!-- 거시경제 쇼크 20~30분 주기 & ON/OFF 토글 & 즉시 발동 -->
+        <div class="flex flex-wrap items-center justify-between gap-2 p-2.5 rounded-xl bg-indigo-50/90 border border-indigo-200">
+          <div class="flex items-center gap-3 flex-wrap">
+            <div class="flex items-center gap-1.5">
+              <span id="dotAutoShock" class="w-2.5 h-2.5 rounded-full bg-rose-500 animate-ping"></span>
+              <span class="text-xs font-black text-indigo-950">거시경제 자동 쇼크 (20~30분 주기):</span>
+            </div>
+            <button id="btnToggleAutoShock" onclick="toggleAutoShock()" class="px-3 py-1 rounded-xl text-xs font-black transition active:scale-95 bg-emerald-600 text-white cursor-pointer">
+              자동 발생: ON
+            </button>
+            <div id="boxCountdown" class="flex items-center gap-1 bg-white px-2.5 py-0.5 rounded-lg border border-indigo-200 shadow-2xs">
+              <span class="text-xs font-bold text-slate-500">다음 발동까지:</span>
+              <span id="teacherRandomCountdown" class="text-xs font-mono font-black text-rose-600 num-font">25:00</span>
+            </div>
+          </div>
+          <button onclick="triggerImmediateRandomShock()" class="px-3.5 py-1.5 rounded-xl bg-gradient-to-r from-rose-600 to-indigo-600 hover:from-rose-700 hover:to-indigo-700 text-white text-xs font-black flex items-center gap-1.5 shadow-md transition active:scale-95 cursor-pointer">
+            <i class="fa-solid fa-bolt text-amber-300"></i>
+            <span>⚡ 즉시 랜덤 거시쇼크 발동</span>
+          </button>
+        </div>
+      </div>
+
+      <!-- 10 호재 & 10 악재 시나리오 패널 (설명 전체 표시) -->
+      <div class="flex-1 min-h-0 overflow-y-auto space-y-4 p-3 bg-slate-50 rounded-2xl border border-slate-200">
+        <div>
+          <div class="flex items-center justify-between mb-2">
+            <span class="text-xs font-black text-rose-700 flex items-center gap-1.5">
+              <i class="fa-solid fa-arrow-trend-up"></i>
+              <span>호재 시나리오 10종 (클릭 시 전 증시 즉시 발동)</span>
+            </span>
+          </div>
+          <div id="gridGoodShocks" class="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-5 gap-2.5"></div>
+        </div>
+
+        <div class="pt-2 border-t border-slate-200">
+          <div class="flex items-center justify-between mb-2">
+            <span class="text-xs font-black text-blue-700 flex items-center gap-1.5">
+              <i class="fa-solid fa-arrow-trend-down"></i>
+              <span>악재 시나리오 10종 (클릭 시 전 증시 즉시 발동)</span>
+            </span>
+          </div>
+          <div id="gridBadShocks" class="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-5 gap-2.5"></div>
+        </div>
+      </div>
+    </div>
+  </div>
+
+  <!-- 반별 QR코드 모달 -->
+  <div id="qrModal" class="hidden fixed inset-0 z-[70] flex items-center justify-center p-3 bg-slate-950/80 backdrop-blur-sm">
+    <div class="bg-white rounded-3xl border border-slate-200 shadow-2xl max-w-lg w-full p-5 text-center flex flex-col items-center gap-3">
+      <div class="flex items-center justify-between w-full pb-2 border-b border-slate-100">
+        <div class="flex items-center gap-2">
+          <div class="w-8 h-8 rounded-xl bg-indigo-600 text-white flex items-center justify-center text-sm font-black shadow-md">
+            <i class="fa-solid fa-qrcode"></i>
+          </div>
+          <h3 class="text-base font-black text-slate-900 tracking-tight">반별 QR코드 입장</h3>
+        </div>
+        <button onclick="toggleQRModal(false)" class="text-slate-400 hover:text-slate-600 text-sm cursor-pointer">
+          <i class="fa-solid fa-xmark"></i>
+        </button>
+      </div>
+
+      <div class="w-full bg-slate-50 p-2.5 rounded-2xl border border-slate-200">
+        <div class="text-xs font-black text-slate-700 mb-1.5 text-left">학급(반) 선택:</div>
+        <div class="flex flex-wrap gap-1.5" id="qrClassPills"></div>
+      </div>
+
+      <div class="p-3 bg-white rounded-2xl border-2 border-indigo-200 shadow-inner flex flex-col items-center">
+        <div id="qrTargetClassLabel" class="px-3 py-1 rounded-full bg-indigo-50 border border-indigo-200 text-xs font-black text-indigo-800 mb-2">
+          KRX 모의주식 [1반] 입장 QR
+        </div>
+        <div id="qrcodeCanvasContainer" class="p-2 bg-white rounded-xl shadow-xs"></div>
+        <span class="mt-2 text-xs font-bold text-slate-500">카메라 앱으로 비추면 바로 실행됩니다</span>
+      </div>
+
+      <button onclick="toggleQRModal(false)" class="w-full py-2.5 rounded-xl bg-slate-900 hover:bg-slate-800 text-white font-black text-xs transition cursor-pointer">
+        창 닫기
+      </button>
+    </div>
+  </div>
+
+  <!-- 긴급 속보 모달 -->
+  <div id="breakingModal" class="hidden fixed inset-0 z-[80] flex items-center justify-center p-3 bg-slate-950/80 backdrop-blur-md">
+    <div id="breakingCard" class="bg-white rounded-2xl border-2 border-rose-500 shadow-2xl max-w-lg w-full p-5 text-left flex flex-col gap-3">
+      <div class="flex items-center justify-between pb-2 border-b border-slate-100">
+        <div class="flex items-center gap-2.5">
+          <div id="breakingIcon" class="w-9 h-9 rounded-xl bg-rose-600 text-white flex items-center justify-center text-sm font-black shadow-md animate-pulse">
+            <i class="fa-solid fa-bolt"></i>
+          </div>
+          <div>
+            <div class="flex items-center gap-2">
+              <span class="text-xs font-black tracking-tight text-slate-900">KRX 긴급 마켓 속보</span>
+              <span id="breakingBadge" class="px-2 py-0.5 rounded text-[10px] font-black bg-rose-100 text-rose-700 border border-rose-200">호재 ▲</span>
+            </div>
+          </div>
+        </div>
+        <button onclick="closeBreakingModal()" class="text-slate-400 hover:text-slate-600 text-xs cursor-pointer">
+          <i class="fa-solid fa-xmark"></i>
+        </button>
+      </div>
+      <div>
+        <h3 id="breakingTitle" class="text-base md:text-lg font-black text-slate-900 leading-snug tracking-tight"></h3>
+      </div>
+      <div class="bg-slate-50 p-3 rounded-xl border border-slate-200 text-slate-700 space-y-1.5">
+        <p id="breakingContent" class="text-xs font-medium leading-relaxed text-slate-800"></p>
+        <p id="breakingSummary" class="text-[11px] text-slate-500 leading-normal pt-1 border-t border-slate-200"></p>
+      </div>
+      <div class="pt-2 border-t border-slate-100 flex items-center justify-between">
+        <span id="breakingTimerText" class="text-xs font-mono text-slate-400">12초 후 자동으로 닫힙니다</span>
+        <button onclick="closeBreakingModal()" class="px-4 py-2 rounded-xl bg-slate-900 hover:bg-slate-800 text-white font-black text-xs transition cursor-pointer">
+          기사 확인 완료
+        </button>
+      </div>
+    </div>
+  </div>
+
+  <script>
+    // 100개 종목 데이터베이스
+    const RAW_STOCKS = [{"id":"003230","name":"삼양식품","cat":"식품/외식","icon":"🍜","base":1215000,"desc":"전 세계를 뒤흔든 '불닭볶음면' 수출 잭팟으로 120만 원대를 돌파한 K-푸드 1등 수출 기업입니다."},{"id":"004370","name":"농심","cat":"식품/외식","icon":"🍜","base":392500,"desc":"국민 라면 신라면, 새우깡, 짜파게티를 만드는 대한민국 1등 전통 라면 제조사입니다."},{"id":"007310","name":"오뚜기","cat":"식품/외식","icon":"🍛","base":412000,"desc":"진라면, 3분 카레, 케첩, 마요네즈로 온 국민 식탁을 책임지는 착한 종합 식품기업입니다."},{"id":"097950","name":"CJ제일제당","cat":"식품/외식","icon":"🥟","base":315000,"desc":"비비고 만두, 햇반, 스팸으로 세계 K-푸드 문화를 선도하는 국내 최대 식품 기업입니다."},{"id":"271560","name":"오리온","cat":"식품/외식","icon":"🥧","base":102000,"desc":"초코파이 정(情), 포카칩, 꼬북칩으로 중국과 베트남, 러시아를 사로잡은 글로벌 제과사입니다."},{"id":"005180","name":"빙그레","cat":"식품/외식","icon":"🍦","base":81500,"desc":"바나나맛우유, 붕어싸만코, 메로나로 오랜 사랑을 받는 유제품 및 빙과 1등 기업입니다."},{"id":"000080","name":"하이트진로","cat":"식품/외식","icon":"🍺","base":21800,"desc":"참이슬과 테라, 켈리로 국내 주류 시장을 이끄는 100년 전통의 음료 기업입니다."},{"id":"280360","name":"롯데웰푸드","cat":"식품/외식","icon":"🍫","base":148000,"desc":"빼빼로, 설레임, 월드콘, 꼬깔콘 등을 생산하는 롯데그룹의 대표 종합 제과사입니다."},{"id":"001680","name":"대상","cat":"식품/외식","icon":"🥢","base":23400,"desc":"종가집 김치와 청정원 고추장, 장류로 전 세계에 발효 식품의 맛을 전파하는 기업입니다."},{"id":"005610","name":"SPC삼립","cat":"식품/외식","icon":"🍞","base":58000,"desc":"포켓몬빵 열풍의 주인공이자 파리바게뜨 빵을 공급하는 대한민국 베이커리 1위입니다."},{"id":"049770","name":"동원F&B","cat":"식품/외식","icon":"🐟","base":37200,"desc":"동원참치와 양반김, 쿨피스 등 영양 만점 수산·식품을 제조하는 해양 종합 식품사입니다."},{"id":"267980","name":"매일유업","cat":"식품/외식","icon":"🥛","base":42500,"desc":"아몬드브리즈, 상하목장 유기농 우유를 만드는 혁신 유제품 전문 기업입니다."},{"id":"005930","name":"삼성전자","cat":"IT/반도체","icon":"📱","base":284000,"desc":"갤럭시 스마트폰, DRAM, 초고성능 HBM 메모리를 만드는 한국 시가총액 1위 대표 기업입니다."},{"id":"000660","name":"SK하이닉스","cat":"IT/반도체","icon":"💾","base":1848000,"desc":"AI 시대를 이끄는 엔비디아의 핵심 파트너이자 180만 원대 황제주에 등극한 HBM 세계 1위 제조사입니다."},{"id":"035420","name":"NAVER","cat":"IT/반도체","icon":"🟢","base":195100,"desc":"국내 1위 포털 검색엔진과 라인(LINE), 치지직, 웹툰을 운영하는 국가대표 IT 플랫폼입니다."},{"id":"035720","name":"카카오","cat":"IT/반도체","icon":"🟡","base":33750,"desc":"국민 메신저 카카오톡과 모빌리티, 콘텐츠, 금융을 융합한 모바일 라이프 플랫폼입니다."},{"id":"066570","name":"LG전자","cat":"IT/반도체","icon":"📺","base":112000,"desc":"올레드 TV, 공간 인테리어 가전 오브제, 자동차 전장 부품을 만드는 글로벌 전자기업입니다."},{"id":"009150","name":"삼성전기","cat":"IT/반도체","icon":"🔌","base":165000,"desc":"스마트폰과 전기차에 수만 개씩 들어가는 초소형 전자 부품 MLCC의 세계 강자입니다."},{"id":"042700","name":"한미반도체","cat":"IT/반도체","icon":"⚙️","base":242000,"desc":"AI HBM 반도체 생산에 반드시 필요한 듀얼 TC 본더 장비 글로벌 1위 기업입니다."},{"id":"058470","name":"리노공업","cat":"IT/반도체","icon":"🔬","base":218000,"desc":"반도체 칩이 잘 동작하는지 검사하는 초미세 리노핀과 소켓 기술의 독보적 강자입니다."},{"id":"000990","name":"DB하이텍","cat":"IT/반도체","icon":"💡","base":48500,"desc":"전력반도체와 이미지 센서를 전문적으로 위탁 생산하는 8인치 파운드리 선두주자입니다."},{"id":"377300","name":"카카오페이","cat":"IT/반도체","icon":"💳","base":29500,"desc":"스마트폰 터치 한 번으로 송금, 간편결제, 금융 투자를 연결하는 대표 핀테크사입니다."},{"id":"053800","name":"안랩","cat":"IT/반도체","icon":"🛡️","base":62500,"desc":"국민 백신 V3를 개발하여 대한민국의 컴퓨터와 모바일 보안을 지켜온 정보보안사입니다."},{"id":"039030","name":"이오테크닉스","cat":"IT/반도체","icon":"✨","base":192000,"desc":"초정밀 레이저로 반도체 칩에 글자를 새기고 웨이퍼를 가공하는 레이저 장비 1위입니다."},{"id":"357780","name":"솔브레인","cat":"IT/반도체","icon":"🧪","base":275000,"desc":"반도체와 디스플레이 미세 공정에 들어가는 고순도 화학 공정 소재를 공급합니다."},{"id":"240810","name":"원익IPS","cat":"IT/반도체","icon":"🏗️","base":33500,"desc":"반도체 웨이퍼 표면에 얇은 막을 고르게 입히는 증착 공정 장비의 핵심 국산화 기업입니다."},{"id":"259960","name":"크래프톤","cat":"게임/엔터","icon":"🪂","base":197700,"desc":"전 세계 수억 명이 즐기는 메가 히트 배틀로얄 게임 '배틀그라운드'의 개발사입니다."},{"id":"036570","name":"엔씨소프트","cat":"게임/엔터","icon":"⚔️","base":218000,"desc":"리니지 시리즈, 블레이드 & 소울로 한국 MMORPG의 대중화를 이끈 게임 명가입니다."},{"id":"251270","name":"넷마블","cat":"게임/엔터","icon":"🎮","base":63500,"desc":"세븐나이츠, 나 혼자만 레벨업 등 글로벌 인기 IP 모바일 게임을 서비스하는 기업입니다."},{"id":"263750","name":"펄어비스","cat":"게임/엔터","icon":"🐎","base":39800,"desc":"자체 게임 엔진 기술력을 바탕으로 '검은사막', '붉은사막'을 개발하는 오픈월드 명가입니다."},{"id":"293490","name":"카카오게임즈","cat":"게임/엔터","icon":"🏹","base":19800,"desc":"오딘: 발할라 라이징, 우마무스메를 성공시킨 모바일·PC 게임 퍼블리셔입니다."},{"id":"225570","name":"넥슨게임즈","cat":"게임/엔터","icon":"🔫","base":17200,"desc":"블루 아카이브와 루트슈터 퍼스트 디센던트로 글로벌 팬덤을 형성한 개발사입니다."},{"id":"112040","name":"위메이드","cat":"게임/엔터","icon":"🐉","base":40500,"desc":"미르의 전설 IP와 게임 블록체인 생태계를 결합한 선구적 게임 개발사입니다."},{"id":"352820","name":"하이브","cat":"게임/엔터","icon":"🎤","base":155500,"desc":"BTS, 세븐틴, 투모로우바이투게더, 뉴진스를 보유한 세계 최대 K-POP 레이블입니다."},{"id":"035900","name":"JYP Ent.","cat":"게임/엔터","icon":"💃","base":58200,"desc":"트와이스, 스트레이 키즈, ITZY, NMIXX를 배출한 탄탄한 시스템의 K-POP 엔터사입니다."},{"id":"041510","name":"에스엠","cat":"게임/엔터","icon":"🎵","base":81500,"desc":"에스파, NCT, 라이즈를 통해 독창적인 광야 세계관을 선보이는 대한민국 1호 엔터사입니다."},{"id":"122870","name":"와이지엔터","cat":"게임/엔터","icon":"🎧","base":42800,"desc":"블랙핑크, 베이비몬스터, 트레저가 소속된 글로벌 힙합 트렌드 리더 엔터사입니다."},{"id":"035760","name":"CJ ENM","cat":"게임/엔터","icon":"🎬","base":78000,"desc":"tvN 방송 채널, 영화 기생충 제작, KCON을 주최하는 종합 엔터테인먼트 기업입니다."},{"id":"253450","name":"스튜디오드래곤","cat":"게임/엔터","icon":"📺","base":43500,"desc":"눈물의 여왕, 더 글로리, 사랑의 불시착을 탄생시킨 아시아 최대 드라마 스튜디오입니다."},{"id":"005380","name":"현대차","cat":"모빌리티","icon":"🚗","base":353000,"desc":"아이오닉 전기차와 프리미엄 제네시스로 글로벌 자동차 판매 3위에 오른 대표 기업입니다."},{"id":"000270","name":"기아","cat":"모빌리티","icon":"🚙","base":115400,"desc":"EV3, 카니발, 쏘렌토 등 감각적인 디자인과 전동화 전략으로 최고 수익성을 냅니다."},{"id":"012330","name":"현대모비스","cat":"모빌리티","icon":"⚙️","base":245000,"desc":"자율주행 센서, 첨단 제동 및 조향 장치 등 미래 모빌리티 핵심 부품을 만듭니다."},{"id":"086280","name":"현대글로비스","cat":"모빌리티","icon":"🚢","base":128000,"desc":"대형 자동차 운반선으로 전 세계 바다를 누비며 완성차 해상 운송을 담당합니다."},{"id":"003490","name":"대한항공","cat":"모빌리티","icon":"✈️","base":31500,"desc":"오대양 육대주를 연결하는 대한민국 1위 국적 항공사이자 글로벌 항공 화물 강자입니다."},{"id":"020560","name":"아시아나항공","cat":"모빌리티","icon":"🛫","base":10800,"desc":"미주, 유럽 노선과 고품격 기내 서비스를 제공하는 한국의 2대 대형 항공사입니다."},{"id":"089590","name":"제주항공","cat":"모빌리티","icon":"🍊","base":10200,"desc":"제주 및 일본, 동남아를 합리적인 가격에 연결하는 대한민국 1등 저비용항공사입니다."},{"id":"091810","name":"티웨이항공","cat":"모빌리티","icon":"🛩️","base":2850,"desc":"유럽 크로아티아, 파리 노선까지 취항을 확대한 초고속 성장 실속형 항공사입니다."},{"id":"011200","name":"HMM","cat":"모빌리티","icon":"⚓","base":19200,"desc":"초대형 컨테이너선으로 세계 무역의 대동맥을 잇는 한국 최대 국적 해운 선사입니다."},{"id":"028670","name":"팬오션","cat":"모빌리티","icon":"🚢","base":3900,"desc":"철광석, 석탄, 곡물 등 부피가 큰 핵심 원자재를 대규모로 나르는 벌크선 전문사입니다."},{"id":"204320","name":"HL만도","cat":"모빌리티","icon":"🛑","base":41000,"desc":"전기차와 자율주행 차량의 전자식 브레이크 및 첨단 조향 장치를 생산합니다."},{"id":"018880","name":"한온시스템","cat":"모빌리티","icon":"❄️","base":4250,"desc":"전기차 배터리가 과열되지 않도록 정밀 제어하는 친환경 열관리 시스템 전문사입니다."},{"id":"161390","name":"한국타이어","cat":"모빌리티","icon":"🛞","base":51500,"desc":"포르쉐, BMW와 전기차 전용 타이어 '아이온(iON)'을 공급하는 글로벌 톱티어 타이어사입니다."},{"id":"090430","name":"아모레퍼시픽","cat":"뷰티/유통","icon":"💄","base":152000,"desc":"설화수, 라네즈, 이니스프리로 글로벌 K-뷰티 열풍을 주도하는 1위 화장품사입니다."},{"id":"051900","name":"LG생활건강","cat":"뷰티/유통","icon":"🧴","base":368000,"desc":"더 히스토리 오브 후, 페리오 치약, 코카콜라 음료를 만드는 생활문화 대기업입니다."},{"id":"192820","name":"코스맥스","cat":"뷰티/유통","icon":"🧪","base":153000,"desc":"세계 유명 화장품 브랜드의 쿠션과 립스틱을 직접 연구 개발해 생산하는 1등 ODM사입니다."},{"id":"161890","name":"한국콜마","cat":"뷰티/유통","icon":"☀️","base":72000,"desc":"올리브영 인기 선크림과 기초 화장품의 핵심 원천 제형 기술을 보유한 연구 제조사입니다."},{"id":"028260","name":"삼성물산","cat":"뷰티/유통","icon":"🏛️","base":148000,"desc":"에버랜드 놀이공원, 빈폴 패션, 초고층 빌딩 부르즈 할리파를 지은 종합 그룹사입니다."},{"id":"282330","name":"BGF리테일","cat":"뷰티/유통","icon":"🏪","base":126000,"desc":"연세우유 크림빵과 디저트 열풍을 이끄는 대한민국 1위 편의점 'CU' 운영사입니다."},{"id":"007070","name":"GS리테일","cat":"뷰티/유통","icon":"🏪","base":21200,"desc":"혜자로운 도시락과 편의점 택배로 친숙한 생활 밀착형 플랫폼 'GS25' 운영사입니다."},{"id":"139480","name":"이마트","cat":"뷰티/유통","icon":"🛒","base":63500,"desc":"가성비 노브랜드, 트레이더스, 스타벅스 코리아를 운영하는 대형 할인마트 선두사입니다."},{"id":"004170","name":"신세계","cat":"뷰티/유통","icon":"🛍️","base":158000,"desc":"강남점 백화점과 센텀시티에서 최고급 명품 쇼핑 문화를 선도하는 럭셔리 유통사입니다."},{"id":"069960","name":"현대백화점","cat":"뷰티/유통","icon":"🏬","base":51000,"desc":"더현대 서울을 통해 MZ세대의 핫플레이스 팝업스토어 성지로 떠오른 복합 쇼핑사입니다."},{"id":"383220","name":"F&F","cat":"뷰티/유통","icon":"🧢","base":66500,"desc":"청소년들이 좋아하는 MLB 볼캡과 디스커버리 롱패딩을 히트시킨 패션 1위 기업입니다."},{"id":"008770","name":"호텔신라","cat":"뷰티/유통","icon":"🏨","base":54800,"desc":"인천공항과 아시아 주요 공항에서 명품 면세점을 운영하는 글로벌 면세·호텔 기업입니다."},{"id":"081660","name":"휠라홀딩스","cat":"뷰티/유통","icon":"👟","base":40500,"desc":"디스럽터 운동화와 글로벌 최고급 골프 브랜드 타이틀리스트를 보유한 스포츠사입니다."},{"id":"207940","name":"삼성바이오","cat":"바이오","icon":"🧬","base":1366000,"desc":"세계 최대 규모 첨단 시설에서 글로벌 항암 바이오 의약품을 위탁 제조하는 바이오 대장주입니다."},{"id":"068270","name":"셀트리온","cat":"바이오","icon":"🔬","base":177000,"desc":"자가면역질환 치료제 램시마와 바이오시밀러로 전 세계 시장을 개척한 바이오사입니다."},{"id":"000100","name":"유한양행","cat":"바이오","icon":"💊","base":74000,"desc":"국산 폐암 혁신 신약 '렉라자'의 미국 FDA 품목허가를 획득한 신약 명가입니다."},{"id":"128940","name":"한미약품","cat":"바이오","icon":"🧪","base":324000,"desc":"독자 제형 기술로 차세대 비만 치료제와 대사질환 신약을 개발하는 R&D 제약사입니다."},{"id":"069620","name":"대웅제약","cat":"바이오","icon":"🐻","base":147000,"desc":"간 기능 개선제 우루사와 미국에 수출하는 보톡스 나보타를 개발한 제약사입니다."},{"id":"185750","name":"종근당","cat":"바이오","icon":"💊","base":119000,"desc":"펜잘과 락토핏 생유산균으로 건강기능식품 및 만성질환 치료제를 선도합니다."},{"id":"006280","name":"녹십자","cat":"바이오","icon":"🩸","base":138000,"desc":"독감 백신, 수두 백신과 필수 혈액제제를 개발해 WHO에 수출하는 백신 전문사입니다."},{"id":"326030","name":"SK바이오팜","cat":"바이오","icon":"🧠","base":108000,"desc":"뇌전증 치료 신약 엑스코프리를 개발해 미국 시장에 직접 판매하는 신약 바이오사입니다."},{"id":"028300","name":"HLB","cat":"바이오","icon":"🎗️","base":86500,"desc":"암세포 신생혈관을 억제하는 표적항암제 리보세라닙을 개발하는 바이오 기업입니다."},{"id":"196170","name":"알테오젠","cat":"바이오","icon":"💉","base":249500,"desc":"정맥주사를 5분 만에 맞는 피하주사(SC)로 변환해 주는 원천기술을 보유한 코스닥 대장주입니다."},{"id":"005500","name":"삼진제약","cat":"바이오","icon":"🤕","base":22000,"desc":"한국인의 두통약 게보린을 생산하며 오랜 신뢰를 쌓아온 전통 제약사입니다."},{"id":"003850","name":"보령","cat":"바이오","icon":"❤️","base":11600,"desc":"국산 고혈압 신약 카나브를 성공시키고 우주 헬스케어에 도전하는 헬스케어사입니다."},{"id":"373220","name":"LG에너지솔루션","cat":"2차전지","icon":"🔋","base":350500,"desc":"테슬라, GM 전기차에 납품되는 배터리를 양산하는 대한민국 1위 배터리 셀 제조사입니다."},{"id":"005490","name":"POSCO홀딩스","cat":"2차전지","icon":"🏗️","base":310500,"desc":"포스코 제철소 철강과 아르헨티나 염호에서 배터리 핵심 원료 리튬을 생산합니다."},{"id":"003670","name":"포스코퓨처엠","cat":"2차전지","icon":"⚡","base":242000,"desc":"배터리 용량을 결정하는 양극재와 충전 수명을 돕는 음극재를 모두 생산합니다."},{"id":"086520","name":"에코프로","cat":"2차전지","icon":"🔄","base":79700,"desc":"원료 채굴부터 전구체, 양극재, 폐배터리 재활용까지 배터리 생태계를 구축했습니다."},{"id":"247540","name":"에코프로비엠","cat":"2차전지","icon":"⚡","base":105200,"desc":"전기차 주행거리를 획기적으로 늘려주는 하이니켈 양극재 세계 1위 공급사입니다."},{"id":"006400","name":"삼성SDI","cat":"2차전지","icon":"🔋","base":519000,"desc":"BMW 전기차 배터리와 화재 없는 꿈의 전고체 배터리를 개발하는 삼성 배터리사입니다."},{"id":"096770","name":"SK이노베이션","cat":"2차전지","icon":"🛢️","base":122000,"desc":"정유 화학 사업과 포드 전기차에 들어가는 SK온 파우치 배터리를 아우릅니다."},{"id":"010130","name":"고려아연","cat":"2차전지","icon":"🪙","base":765000,"desc":"아연과 은, 금 제련 기술을 바탕으로 2차전지 전지박과 황산니켈을 생산합니다."},{"id":"004020","name":"현대제철","cat":"2차전지","icon":"🏗️","base":29200,"desc":"자동차 차체에 들어가는 고장력 강판과 대형 건설용 철근 형강을 만듭니다."},{"id":"001230","name":"동국제강","cat":"2차전지","icon":"🏢","base":10200,"desc":"가전제품 겉면에 쓰이는 컬러강판 시장을 이끄는 대한민국 대표 철강사입니다."},{"id":"066970","name":"엘앤에프","cat":"2차전지","icon":"⚡","base":118000,"desc":"니켈 함량 90% 이상의 NCMA 단결정 양극재를 테슬라 등에 공급하는 소재사입니다."},{"id":"034020","name":"두산에너빌리티","cat":"2차전지","icon":"⚛️","base":21200,"desc":"대형 원자력 발전소와 가스터빈, 해상풍력 발전 설비를 제작하는 에너지 장비사입니다."},{"id":"105560","name":"KB금융","cat":"금융/지주","icon":"🏦","base":173000,"desc":"KB국민은행, 국민카드, KB증권을 아우르는 대한민국 최대 종합 금융그룹입니다."},{"id":"055550","name":"신한지주","cat":"금융/지주","icon":"🏦","base":109400,"desc":"신한은행, 신한카드, 신한투자증권으로 안정적 금융 서비스를 제공하는 지주사입니다."},{"id":"086790","name":"하나금융지주","cat":"금융/지주","icon":"🏦","base":88500,"desc":"하나은행과 트래블로그 카드로 청소년 해외 환전 무료 돌풍을 일으킨 금융사입니다."},{"id":"316140","name":"우리금융지주","cat":"금융/지주","icon":"🏦","base":22400,"desc":"우리은행과 우리카드를 중심으로 기업 및 서민 금융에 든든한 전통 금융사입니다."},{"id":"323410","name":"카카오뱅크","cat":"금융/지주","icon":"🟡","base":22600,"desc":"청소년 mini 카드와 간편 이체로 10대들의 금융 습관을 바꾼 1등 모바일 은행입니다."},{"id":"032830","name":"삼성생명","cat":"금융/지주","icon":"📜","base":102000,"desc":"가족의 건강과 노후를 책임지는 자산 규모 1위 대한민국 대표 생명보험사입니다."},{"id":"000810","name":"삼성화재","cat":"금융/지주","icon":"🛡️","base":388000,"desc":"애니카 자동차보험과 화재보험, 펫보험을 보장하는 손해보험 1등 기업입니다."},{"id":"006800","name":"미래에셋증권","cat":"금융/지주","icon":"📈","base":8850,"desc":"해외 주식 투자와 퇴직연금 자산을 가장 많이 굴리는 대한민국 대표 대형 증권사입니다."},{"id":"039490","name":"키움증권","cat":"금융/지주","icon":"📊","base":134000,"desc":"영웅문 플랫폼으로 개인 주식투자자 점유율 1위를 지켜온 온라인 증권사입니다."},{"id":"071050","name":"한국금융지주","cat":"금융/지주","icon":"🏢","base":77500,"desc":"한국투자증권과 카카오뱅크 주요 주주로서 기업공개(IPO)에 특화된 금융그룹입니다."},{"id":"005940","name":"NH투자증권","cat":"금융/지주","icon":"🌾","base":14500,"desc":"나무(NAMUH) 모바일 증권 앱과 농협 금융 네트워크를 기반으로 한 대형 증권사입니다."}];
+    const GOOD_SHOCKS = [{"id":"BOOM_KFOOD","title":"🍜 K-푸드 글로벌 열풍","msg":"불닭볶음면·만두 등 글로벌 품절 대란! 해외 수출 신기록 달성으로 음식료 기업의 실적이 급증합니다.","isUp":true,"shockSector":"식품/외식","rateStr":"+15%","rateMult":1.15,"relatedCodes":["003230","004370","271560","097950"],"targetSectors":["식품/외식","뷰티/유통"],"summary":"해외 매장 품절 대란과 K-컬처 인기로 음식료 기업들의 해외 매출 비중이 사상 최대치를 경신했습니다."},{"id":"BOOM_AI_TECH","title":"🤖 AI 반도체 수주 잭팟","msg":"빅테크 기업의 초거대 AI 인프라 투자 확대로 HBM 메모리와 차세대 본더 장비 독점 공급 계약이 체결되었습니다.","isUp":true,"shockSector":"IT/반도체","rateStr":"+16%","rateMult":1.16,"relatedCodes":["005930","000660","042700","058470"],"targetSectors":["IT/반도체"],"summary":"글로벌 AI 가속기 생산에 필수적인 초고대역폭 메모리 주문량이 폭증하며 반도체 밸류체인이 급등합니다."},{"id":"BOOM_BATTERY","title":"🔋 2차전지 초대형 공급계약","msg":"북미 글로벌 완성차 제조사와 수십조 원 규모의 차세대 전기차 배터리 장기 납품 계약이 전격 성사되었습니다.","isUp":true,"shockSector":"2차전지","rateStr":"+14%","rateMult":1.14,"relatedCodes":["373220","003670","247540","006400"],"targetSectors":["2차전지","모빌리티"],"summary":"하이니켈 양극재 및 파우치 배터리 대규모 수주로 2차전지 관련 기업들의 가동률이 100%에 달하고 있습니다."},{"id":"BOOM_BIO_FDA","title":"🧬 바이오 FDA 품목승인","msg":"국산 토종 항암 신약이 미국 FDA 최종 품목허가를 취득하며 글로벌 제약 시장 처방이 본격화됩니다.","isUp":true,"shockSector":"바이오","rateStr":"+18%","rateMult":1.18,"relatedCodes":["000100","207940","196170","128940"],"targetSectors":["바이오"],"summary":"신약 후보물질의 미국 시장 독점 판매권 확보로 막대한 마일스톤과 로열티 유입이 기대됩니다."},{"id":"BOOM_RATE_CUT","title":"🏦 기준금리 전격 인하","msg":"중앙은행이 경기 부양을 위해 기준금리를 기습 인하하며 풍부한 시중 유동성이 주식 시장으로 대거 유입됩니다.","isUp":true,"shockSector":"거시경제","rateStr":"+15%","rateMult":1.15,"relatedCodes":["035420","035720","259960","000100"],"targetSectors":["IT/반도체","게임/엔터","바이오"],"summary":"시중 자금 조달 금리 인하로 미래 가치가 높은 테크·성장 기업들의 밸류에이션이 대폭 재평가됩니다."},{"id":"BOOM_TAX_CREDIT","title":"👑 반도체 메가클러스터 전폭 세제 지원","msg":"정부가 국가첨단전략산업 시설투자 세액공제를 대폭 확대하고 용인 클러스터 전력·용수 인프라 국비 지원을 확정했습니다.","isUp":true,"shockSector":"IT/반도체","rateStr":"+14%","rateMult":1.14,"relatedCodes":["005930","000660","042700","058470","039030"],"targetSectors":["IT/반도체"],"summary":"기업들의 조 단위 설비 투자 비용 절감 및 차세대 파운드리·메모리 양산 인프라 구축에 탄력이 붙었습니다."},{"id":"BOOM_CREDIT_UPGRADE","title":"📈 국가 신용등급 역대 최고 상향","msg":"국제 3대 신용평가사가 한국의 재정 건전성과 수출 경쟁력을 높이 평가해 국가 신용등급을 한 단계 전격 상향 조정했습니다.","isUp":true,"shockSector":"금융/지주","rateStr":"+13%","rateMult":1.13,"relatedCodes":["105560","055550","086790","316140","028260"],"targetSectors":["금융/지주","모빌리티"],"summary":"국가 대외 신인도 제고로 한국 기업들의 해외 채권 발행 금리가 급락하고 외국인 장기 투자 자금이 대거 유입됩니다."},{"id":"BOOM_GLOBAL_RALLY","title":"🌐 글로벌 증시 불장 & 외국인 3조 순매수","msg":"뉴욕 증시의 기술주 랠리와 함께 외국인 투자자가 국내 대표 지수 선·현물을 하루 만에 3조 원 넘게 순매수했습니다.","isUp":true,"shockSector":"거시경제","rateStr":"+15%","rateMult":1.15,"relatedCodes":["005930","000660","005380","000270","068270"],"targetSectors":["IT/반도체","모빌리티","바이오"],"summary":"환율 안정과 글로벌 자산운용사들의 신흥국 비중 확대 전략에 힘입어 전 업종 대형주에 강력한 매수세가 집중되었습니다."},{"id":"BOOM_LOGISTICS_DOWN","title":"🚢 국제 해상 운임·유류비 안정화","msg":"글로벌 물류 병목이 해소되고 국제 유가와 컨테이너 운임 지수가 하향 안정화되며 수출 제조업계 물류비 부담이 덜어졌습니다.","isUp":true,"shockSector":"모빌리티","rateStr":"+13%","rateMult":1.13,"relatedCodes":["003490","011200","005380","000270"],"targetSectors":["모빌리티","식품/외식","뷰티/유통"],"summary":"선박 운임과 항공 화물비 정상화로 완성차, 가공식품, 화장품 등 주력 수출 기업들의 분기 영업이익률이 대폭 개선되었습니다."},{"id":"BOOM_VALUE_UP","title":"💎 기업 밸류업 프로그램 & 자사주 소각 붐","msg":"상장사들의 파격적인 배당 확대, 자사주 소각 의무화, 배당소득 분리과세 법안이 통과되며 코리아 디스카운트가 해소됩니다.","isUp":true,"shockSector":"금융/지주","rateStr":"+16%","rateMult":1.16,"relatedCodes":["105560","055550","086790","005380","032830"],"targetSectors":["금융/지주","모빌리티"],"summary":"저PBR 가치주들의 주주환원율이 선진국 수준으로 상향되며 배당 투자자와 글로벌 펀드의 자금이 쏟아지고 있습니다."}];
+    const BAD_SHOCKS = [{"id":"CRASH_RATE_HIKE","title":"📉 기준금리 전격 인상","msg":"물가 급등 우려로 중앙은행이 기준금리를 기습 인상하며 미래 성장 가치가 큰 IT·게임주가 급락합니다.","isUp":false,"shockSector":"거시경제","rateStr":"-14%","rateMult":0.86,"relatedCodes":["035420","035720","259960","352820"],"targetSectors":["IT/반도체","게임/엔터"],"summary":"화폐 긴축 기조가 강화되며 투자 심리가 급랭하고 미래 이익 할인율이 높아져 성장주가 큰 타격을 입었습니다."},{"id":"CRASH_OIL_SHOCK","title":"🛢️ 국제 유가·물류비 폭등","msg":"중동 분쟁으로 국제 유가와 해상 운임이 폭등해 항공사 유류비 부담과 유통·제조업 물류비가 폭증합니다.","isUp":false,"shockSector":"모빌리티","rateStr":"-13%","rateMult":0.87,"relatedCodes":["003490","011200","005380","028260"],"targetSectors":["모빌리티","뷰티/유통"],"summary":"배럴당 유가가 급등하면서 항공·해운·제조업 전반의 연료비 마진이 심각하게 훼손되고 있습니다."},{"id":"CRASH_FOOD_COST","title":"🌾 국제 곡물 원가 쇼크","msg":"이상기후로 밀가루·팜유·대두 가격이 치솟아 라면, 과자, 가공식품 제조사들의 영업이익이 급감합니다.","isUp":false,"shockSector":"식품/외식","rateStr":"-13%","rateMult":0.87,"relatedCodes":["004370","007310","271560","005180"],"targetSectors":["식품/외식"],"summary":"핵심 식자재 원가가 단기간에 30% 이상 폭등하며 제품 마진율이 크게 떨어졌습니다."},{"id":"CRASH_SUPPLY_CHAIN","title":"⚡ 핵심 광물 수출 통제","msg":"주요 자원 보유국이 핵심 배터리 원자재(리튬·니켈) 수출을 통제하여 생산 비용이 치솟습니다.","isUp":false,"shockSector":"2차전지","rateStr":"-14%","rateMult":0.86,"relatedCodes":["373220","086520","005490","066970"],"targetSectors":["2차전지"],"summary":"광물 자원 무기화로 인한 원자재 수급 차질 우려가 배터리 셀 제조사에 하방 압력을 가합니다."},{"id":"CRASH_EXCHANGE_VOL","title":"💵 환율 급등(원화 가치 약세)","msg":"원/달러 환율이 급격히 상승하며 에너지·원자재 수입 기업들의 비용 부담과 외국인 자금 이탈이 심화됩니다.","isUp":false,"shockSector":"금융/지주","rateStr":"-12%","rateMult":0.88,"relatedCodes":["105560","003490","028260","007070"],"targetSectors":["금융/지주","뷰티/유통","모빌리티"],"summary":"환차손 우려로 외국인 매도세가 출회되고 수입 원자재 결제 대금 부담이 기업 수익성을 압박합니다."},{"id":"CRASH_STAGFLATION","title":"🥶 글로벌 스태그플레이션 공포","msg":"경기 침체 속 물가 상승이 지속되는 스태그플레이션 조짐에 가계 소비 심리가 급격히 얼어붙었습니다.","isUp":false,"shockSector":"뷰티/유통","rateStr":"-14%","rateMult":0.86,"relatedCodes":["028260","139480","004170","090430"],"targetSectors":["뷰티/유통","식품/외식"],"summary":"실질 가처분 소득 감소로 백화점, 마트, 패션, 외식 지출이 전방위적으로 축소되고 있습니다."},{"id":"CRASH_TARIFF_WAR","title":"🚨 무역 보호주의 & 고율 관세 장벽 부과","msg":"주요 교역국이 자국 산업 보호를 이유로 한국산 수입품(자동차·철강·전자)에 20% 보복 관세를 예고했습니다.","isUp":false,"shockSector":"모빌리티","rateStr":"-15%","rateMult":0.85,"relatedCodes":["005380","000270","012330","005490"],"targetSectors":["모빌리티","IT/반도체"],"summary":"수출 주도형 한국 경제의 주력 품목 가격 경쟁력 약화 및 해외 현지 공장 비용 증가 우려가 커졌습니다."},{"id":"CRASH_CLOUD_BLACKOUT","title":"⚠️ 글로벌 클라우드 서비스 대규모 장애","msg":"글로벌 데이터센터 전력망 장애 및 보안 솔루션 오류로 전 세계 인터넷 서비스와 게임 플랫폼이 일제히 마비되었습니다.","isUp":false,"shockSector":"게임/엔터","rateStr":"-15%","rateMult":0.85,"relatedCodes":["259960","035420","035720","251270"],"targetSectors":["게임/엔터","IT/반도체"],"summary":"온라인 게임 접속 불가 및 플랫폼 결제 시스템 중단으로 IT·소프트웨어 기업들의 당일 매출 피해가 발생했습니다."},{"id":"CRASH_CLIMATE_ENERGY","title":"🔥 기록적 폭염·가뭄 산업용 전력 제한 조치","msg":"전력 수요 폭증으로 전력거래소가 주요 산업단지 반도체·철강 공장에 전력 감축 명령을 발동했습니다.","isUp":false,"shockSector":"IT/반도체","rateStr":"-13%","rateMult":0.87,"relatedCodes":["005930","000660","005490","004020"],"targetSectors":["IT/반도체"],"summary":"24시간 연속 가동이 필수적인 반도체·제철 라인 가동률 저하로 납기 지연 및 생산 차질이 불가피해졌습니다."},{"id":"CRASH_CREDIT_CRUNCH","title":"💥 고금리 장기화 회사채 차환 경색 사태","msg":"부동산 PF 및 일부 취약 기업의 채무 불이행 여파로 회사채 발행 금리가 폭등하며 자금 조달 경색이 발생했습니다.","isUp":false,"shockSector":"금융/지주","rateStr":"-15%","rateMult":0.85,"relatedCodes":["105560","055550","316140","000810"],"targetSectors":["금융/지주"],"summary":"단기 자금 시장 경색과 대손충당금 적립 부담으로 금융 지주사와 2금융권의 건전성 지표가 악화되었습니다."}];
+    const ALL_SHOCKS = [...GOOD_SHOCKS, ...BAD_SHOCKS];
+
+    function getKrxTickSize(price) {
+      if (price < 2000) return 1;
+      if (price < 5000) return 5;
+      if (price < 20000) return 10;
+      if (price < 50000) return 50;
+      if (price < 200000) return 100;
+      if (price < 500000) return 500;
+      return 1000;
+    }
+    function alignToKrxTick(price) {
+      const tick = getKrxTickSize(price);
+      return Math.round(price / tick) * tick;
+    }
+
+    const ALL_STOCKS = RAW_STOCKS.map(item => {
+      const limitHigh = alignToKrxTick(item.base * 1.30);
+      const limitLow = alignToKrxTick(item.base * 0.70);
+      const history = [];
+      let cur = item.base;
+      for (let i = 0; i < 40; i++) {
+        const tick = getKrxTickSize(cur);
+        const steps = (Math.random() - 0.495) > 0 ? 1 : -1;
+        cur = Math.max(limitLow, Math.min(limitHigh, cur + (tick * steps)));
+        history.push(cur);
+      }
+      return {
+        ...item,
+        price: cur,
+        diff: cur - item.base,
+        rate: Number(((cur - item.base) / item.base * 100).toFixed(2)),
+        limitHigh,
+        limitLow,
+        high: Math.max(...history),
+        low: Math.min(...history),
+        history
+      };
+    });
+
+    let SEED_MONEY = 10000000;
+    let student = {
+      name: '',
+      classNum: 1,
+      studentNum: 1,
+      cash: SEED_MONEY,
+      totalAsset: SEED_MONEY,
+      profitRate: 0,
+      portfolio: {},
+      tradeCount: 0
+    };
+
+    let selectedStockId = '005930';
+    let currentSector = 'ALL';
+    let searchTerm = '';
+    let marketConfigMinutes = 10;
+    let marketSeconds = 10 * 60;
+    let marketState = 'WAITING';
+    let isAutoShockEnabled = true;
+    let randomShockSecondsLeft = Math.floor(Math.random() * (1800 - 1200 + 1)) + 1200;
+    let selectedClass = '1반';
+
+    window.onload = function() {
+      renderCategories();
+      renderStockList();
+      selectStock(selectedStockId);
+      renderTeacherShocks();
+      initChart();
+      initTimers();
+      initKeyboardShortcuts();
+    };
+
+    function initKeyboardShortcuts() {
+      window.addEventListener('keydown', e => {
+        if (e.key === 'F1' || ((e.ctrlKey || e.metaKey || e.altKey) && e.key === '1')) {
+          e.preventDefault();
+          toggleTeacherModal(true);
+        }
+      });
+    }
+
+    let secretCount = 0;
+    let secretTimer = null;
+    function handleSecretTeacherTrigger() {
+      secretCount++;
+      clearTimeout(secretTimer);
+      secretTimer = setTimeout(() => { secretCount = 0; }, 1800);
+      if (secretCount >= 5) {
+        secretCount = 0;
+        toggleTeacherModal(true);
+      }
+    }
+
+    function toggleTeacherModal(show) {
+      document.getElementById('teacherModal').classList.toggle('hidden', !show);
+      if (show) {
+        const qrBtn = document.getElementById('headerQRBtn');
+        if (qrBtn) qrBtn.classList.remove('hidden');
+      }
+    }
+
+    function openLoginModal() {
+      document.getElementById('loginModal').classList.remove('hidden');
+    }
+
+    function handleLoginSubmit(e) {
+      e.preventDefault();
+      const c = parseInt(document.getElementById('inputClass').value, 10) || 1;
+      const n = parseInt(document.getElementById('inputNumber').value, 10) || 1;
+      const name = document.getElementById('inputName').value.trim();
+      if (!name) return;
+      student.classNum = c;
+      student.studentNum = n;
+      student.name = name;
+      document.getElementById('headerStudentName').textContent = name;
+      document.getElementById('headerStudentClass').textContent = `3학년 ${c}반 ${n}번`;
+      document.getElementById('loginModal').classList.add('hidden');
+      updateAssets();
+    }
+
+    function renderCategories() {
+      const container = document.getElementById('categoryContainer');
+      const cats = ['전체', '식품/외식', 'IT/반도체', '게임/엔터', '모빌리티', '뷰티/유통', '바이오', '2차전지', '금융/지주'];
+      container.innerHTML = cats.map(c => {
+        const id = c === '전체' ? 'ALL' : c;
+        const isSel = currentSector === id;
+        return `<button onclick="setSector('${id}')" class="px-2 py-0.5 rounded-lg text-[10px] font-black whitespace-nowrap transition cursor-pointer ${isSel ? 'bg-indigo-600 text-white' : 'bg-white text-slate-600 border border-slate-200'}">${c}</button>`;
+      }).join('');
+    }
+
+    function setSector(cat) {
+      currentSector = cat;
+      renderCategories();
+      renderStockList();
+    }
+
+    function handleSearch(term) {
+      searchTerm = term.toLowerCase().trim();
+      renderStockList();
+    }
+
+    function renderStockList() {
+      const container = document.getElementById('stockListContainer');
+      const filtered = ALL_STOCKS.filter(s => {
+        const matchCat = currentSector === 'ALL' || s.cat === currentSector;
+        const matchSearch = !searchTerm || s.name.toLowerCase().includes(searchTerm) || s.id.includes(searchTerm);
+        return matchCat && matchSearch;
+      });
+      document.getElementById('stockCountBadge').textContent = `${filtered.length}개사`;
+      container.innerHTML = filtered.map(s => {
+        const isSel = s.id === selectedStockId;
+        const isUp = s.diff >= 0;
+        return `
+          <div onclick="selectStock('${s.id}')" class="px-3 py-2 flex items-center justify-between cursor-pointer transition ${isSel ? 'bg-indigo-50/90 border-l-4 border-indigo-600' : 'hover:bg-slate-50'}">
+            <div class="flex items-center gap-2 min-w-0 pr-1">
+              <span class="text-base flex-shrink-0">${s.icon}</span>
+              <div class="min-w-0">
+                <div class="flex items-center gap-1">
+                  <span class="text-xs font-black text-slate-900 truncate">${s.name}</span>
+                  <span class="text-[8px] font-bold text-slate-400 bg-slate-100 px-1 rounded">${s.cat}</span>
+                </div>
+                <div class="text-[9px] text-slate-400 truncate max-w-[140px]">${s.desc}</div>
+              </div>
+            </div>
+            <div class="text-right flex-shrink-0">
+              <div class="text-xs font-black text-slate-900 num-font">${s.price.toLocaleString()}원</div>
+              <div class="text-[10px] font-bold num-font ${isUp ? 'text-rose-600' : 'text-blue-600'}">${isUp ? '+' : ''}${s.rate}%</div>
+            </div>
+          </div>
+        `;
+      }).join('');
+    }
+
+    function selectStock(id) {
+      selectedStockId = id;
+      const s = ALL_STOCKS.find(st => st.id === id);
+      if (!s) return;
+      document.getElementById('detailIcon').textContent = s.icon;
+      document.getElementById('detailName').textContent = s.name;
+      document.getElementById('detailCode').textContent = s.id;
+      document.getElementById('detailCat').textContent = s.cat;
+      document.getElementById('detailDesc').textContent = s.desc;
+      const isUp = s.diff >= 0;
+      const pEl = document.getElementById('detailPrice');
+      pEl.textContent = `${s.price.toLocaleString()}원`;
+      pEl.className = `text-2xl md:text-3xl font-black num-font ${isUp ? 'text-rose-600' : 'text-blue-600'}`;
+      const rEl = document.getElementById('detailRate');
+      rEl.textContent = `${isUp ? '+' : ''}${s.diff.toLocaleString()} (${isUp ? '+' : ''}${s.rate}%)`;
+      rEl.className = `text-xs md:text-sm font-black num-font ${isUp ? 'text-rose-600' : 'text-blue-600'}`;
+      document.getElementById('detailBase').textContent = `기준 ${s.base.toLocaleString()}`;
+      document.getElementById('detailLimitHigh').textContent = `상 ${s.limitHigh.toLocaleString()}`;
+      document.getElementById('detailLimitLow').textContent = `하 ${s.limitLow.toLocaleString()}`;
+      const pct = Math.max(0, Math.min(100, ((s.price - s.limitLow) / (s.limitHigh - s.limitLow)) * 100));
+      document.getElementById('gaugeBar').style.width = `${pct}%`;
+      renderStockList();
+      calculateOrderTotal();
+      drawChart();
+    }
+
+    function calculateOrderTotal() {
+      const s = ALL_STOCKS.find(st => st.id === selectedStockId);
+      if (!s) return;
+      const qty = parseInt(document.getElementById('orderQtyInput').value, 10) || 1;
+      document.getElementById('orderTotalCost').textContent = `${(s.price * qty).toLocaleString()}원`;
+      document.getElementById('orderCash').textContent = `${student.cash.toLocaleString()}원`;
+      const held = student.portfolio[s.id]?.qty || 0;
+      document.getElementById('orderHeld').textContent = `${held}주`;
+      const maxBuy = Math.floor(student.cash / s.price);
+      document.getElementById('orderMaxHint').textContent = `최대 매수: ${maxBuy}주`;
+    }
+
+    function changeQty(delta) {
+      const el = document.getElementById('orderQtyInput');
+      let val = (parseInt(el.value, 10) || 1) + delta;
+      if (val < 1) val = 1;
+      el.value = val;
+      calculateOrderTotal();
+    }
+
+    function setPercent(pct) {
+      const s = ALL_STOCKS.find(st => st.id === selectedStockId);
+      if (!s) return;
+      const maxBuy = Math.floor(student.cash / s.price);
+      let target = Math.floor(maxBuy * pct);
+      if (target < 1) target = 1;
+      document.getElementById('orderQtyInput').value = target;
+      calculateOrderTotal();
+    }
+
+    function executeTrade(type) {
+      if (marketState !== 'ACTIVE') {
+        alert('장이 개장되지 않았습니다. 교사 모드에서 정규장을 개장해주세요.');
+        return;
+      }
+      const s = ALL_STOCKS.find(st => st.id === selectedStockId);
+      if (!s) return;
+      const qty = parseInt(document.getElementById('orderQtyInput').value, 10) || 1;
+      const cost = s.price * qty;
+      if (type === 'BUY') {
+        if (student.cash < cost) {
+          alert('매수 잔고가 부족합니다.');
+          return;
+        }
+        student.cash -= cost;
+        const cur = student.portfolio[s.id] || { qty: 0, avgPrice: 0 };
+        const newQty = cur.qty + qty;
+        const newAvg = Math.round((cur.avgPrice * cur.qty + cost) / newQty);
+        student.portfolio[s.id] = { qty: newQty, avgPrice: newAvg };
+      } else {
+        const cur = student.portfolio[s.id];
+        if (!cur || cur.qty < qty) {
+          alert('매도할 보유 주식이 부족합니다.');
+          return;
+        }
+        student.cash += cost;
+        cur.qty -= qty;
+        if (cur.qty <= 0) delete student.portfolio[s.id];
+      }
+      updateAssets();
+      calculateOrderTotal();
+      renderPortfolio();
+    }
+
+    function updateAssets() {
+      let evalStock = 0;
+      for (const [id, item] of Object.entries(student.portfolio)) {
+        const s = ALL_STOCKS.find(st => st.id === id);
+        if (s) evalStock += s.price * item.qty;
+      }
+      student.totalAsset = student.cash + evalStock;
+      student.profitRate = Number((((student.totalAsset - SEED_MONEY) / SEED_MONEY) * 100).toFixed(2));
+      document.getElementById('headerTotalAsset').textContent = `${student.totalAsset.toLocaleString()}원`;
+      const isUp = student.profitRate >= 0;
+      const el = document.getElementById('headerTotalRate');
+      el.textContent = `${isUp ? '+' : ''}${student.profitRate}%`;
+      el.className = `text-xs font-black num-font ${isUp ? 'text-rose-600' : 'text-blue-600'}`;
+    }
+
+    function renderPortfolio() {
+      const container = document.getElementById('portfolioList');
+      const entries = Object.entries(student.portfolio);
+      document.getElementById('portfolioCount').textContent = `${entries.length}종목`;
+      if (!entries.length) {
+        container.innerHTML = '<div class="py-6 text-center text-slate-400 text-xs">보유 종목이 없습니다.</div>';
+        return;
+      }
+      container.innerHTML = entries.map(([id, item]) => {
+        const s = ALL_STOCKS.find(st => st.id === id);
+        if (!s) return '';
+        const evalVal = s.price * item.qty;
+        const diff = evalVal - (item.avgPrice * item.qty);
+        const rate = Number(((diff / (item.avgPrice * item.qty)) * 100).toFixed(2));
+        const isUp = rate >= 0;
+        return `
+          <div onclick="selectStock('${s.id}')" class="py-2 px-1 flex items-center justify-between hover:bg-slate-50 cursor-pointer">
+            <div>
+              <div class="flex items-center gap-1 font-black text-xs text-slate-900">${s.name} <span class="text-[10px] text-slate-400 font-mono">${item.qty}주</span></div>
+              <div class="text-[10px] text-slate-400">평균 ${item.avgPrice.toLocaleString()}원</div>
+            </div>
+            <div class="text-right">
+              <div class="text-xs font-black text-slate-900 num-font">${evalVal.toLocaleString()}원</div>
+              <div class="text-[10px] font-bold num-font ${isUp ? 'text-rose-600' : 'text-blue-600'}">${isUp ? '+' : ''}${rate}%</div>
+            </div>
+          </div>
+        `;
+      }).join('');
+    }
+
+    function initTimers() {
+      // 주가 틱
+      setInterval(() => {
+        if (marketState !== 'ACTIVE') return;
+        ALL_STOCKS.forEach(s => {
+          const tick = getKrxTickSize(s.price);
+          const dir = (Math.random() - 0.495) > 0 ? 1 : -1;
+          s.price = Math.max(s.limitLow, Math.min(s.limitHigh, s.price + tick * dir));
+          s.diff = s.price - s.base;
+          s.rate = Number(((s.diff / s.base) * 100).toFixed(2));
+          s.history.push(s.price);
+          if (s.history.length > 50) s.history.shift();
+        });
+        selectStock(selectedStockId);
+        updateAssets();
+      }, 1800);
+
+      // 장 타이머
+      setInterval(() => {
+        if (marketState === 'ACTIVE') {
+          if (marketSeconds > 0) {
+            marketSeconds--;
+            updateTimerDisplay();
+          } else {
+            marketState = 'CLOSED';
+            updateTimerDisplay();
+          }
+        }
+      }, 1000);
+
+      // 거시경제 쇼크 20분~30분 타이머 (교사 설정 ON/OFF)
+      setInterval(() => {
+        if (marketState === 'ACTIVE' && isAutoShockEnabled) {
+          if (randomShockSecondsLeft > 0) {
+            randomShockSecondsLeft--;
+            updateRandomCountdownDisplay();
+          } else {
+            triggerRandomShockAuto();
+          }
+        }
+      }, 1000);
+    }
+
+    function toggleAutoShock() {
+      isAutoShockEnabled = !isAutoShockEnabled;
+      const btn = document.getElementById('btnToggleAutoShock');
+      const dot = document.getElementById('dotAutoShock');
+      if (isAutoShockEnabled) {
+        btn.textContent = '자동 발생: ON';
+        btn.className = 'px-3 py-1 rounded-xl text-xs font-black transition active:scale-95 bg-emerald-600 text-white cursor-pointer';
+        dot.className = 'w-2.5 h-2.5 rounded-full bg-rose-500 animate-ping';
+      } else {
+        btn.textContent = '자동 발생: OFF (꺼짐)';
+        btn.className = 'px-3 py-1 rounded-xl text-xs font-black transition active:scale-95 bg-slate-200 text-slate-600 hover:bg-slate-300 cursor-pointer';
+        dot.className = 'w-2.5 h-2.5 rounded-full bg-slate-400';
+      }
+    }
+
+    function updateTimerDisplay() {
+      const m = Math.floor(marketSeconds / 60);
+      const s = marketSeconds % 60;
+      const str = `${String(m).padStart(2, '0')}:${String(s).padStart(2, '0')}`;
+      const el = document.getElementById('marketTimerText');
+      el.textContent = str;
+      const stat = document.getElementById('marketStatusText');
+      stat.textContent = marketState === 'ACTIVE' ? '정규장 거래중' : (marketState === 'PAUSED' ? '일시정지' : '정규장 마감');
+    }
+
+    function updateRandomCountdownDisplay() {
+      const m = Math.floor(randomShockSecondsLeft / 60);
+      const s = randomShockSecondsLeft % 60;
+      document.getElementById('teacherRandomCountdown').textContent = `${String(m).padStart(2, '0')}:${String(s).padStart(2, '0')}`;
+    }
+
+    function triggerRandomShockAuto() {
+      const isGood = Math.random() < 0.5;
+      const pool = isGood ? GOOD_SHOCKS : BAD_SHOCKS;
+      const chosen = pool[Math.floor(Math.random() * pool.length)];
+      applyShock(chosen);
+      randomShockSecondsLeft = Math.floor(Math.random() * (1800 - 1200 + 1)) + 1200;
+    }
+
+    function triggerImmediateRandomShock() {
+      triggerRandomShockAuto();
+    }
+
+    function applyShock(shock) {
+      ALL_STOCKS.forEach(s => {
+        if (shock.targetSectors.includes(s.cat) || shock.relatedCodes.includes(s.id)) {
+          s.price = Math.max(s.limitLow, Math.min(s.limitHigh, alignToKrxTick(s.price * shock.rateMult)));
+          s.diff = s.price - s.base;
+          s.rate = Number(((s.diff / s.base) * 100).toFixed(2));
+          s.history.push(s.price);
+        }
+      });
+      selectStock(selectedStockId);
+      updateAssets();
+
+      // 속보 팝업
+      const m = document.getElementById('breakingModal');
+      document.getElementById('breakingTitle').textContent = shock.title;
+      document.getElementById('breakingContent').textContent = shock.msg;
+      document.getElementById('breakingSummary').textContent = shock.summary;
+      const badge = document.getElementById('breakingBadge');
+      badge.textContent = `${shock.shockSector} · ${shock.isUp ? '호재 ▲' : '악재 ▼'} (${shock.rateStr})`;
+      badge.className = `px-2 py-0.5 rounded text-[10px] font-black ${shock.isUp ? 'bg-rose-100 text-rose-700' : 'bg-blue-100 text-blue-700'}`;
+      document.getElementById('breakingIcon').className = `w-9 h-9 rounded-xl ${shock.isUp ? 'bg-rose-600' : 'bg-blue-600'} text-white flex items-center justify-center text-sm font-black shadow-md animate-pulse`;
+      m.classList.remove('hidden');
+
+      setTimeout(closeBreakingModal, 12000);
+    }
+
+    function closeBreakingModal() {
+      document.getElementById('breakingModal').classList.add('hidden');
+    }
+
+    function teacherToggleMarket() {
+      marketState = marketState === 'ACTIVE' ? 'PAUSED' : 'ACTIVE';
+      const btn = document.getElementById('btnTeacherMarketToggle');
+      btn.innerHTML = marketState === 'ACTIVE' ? '<i class="fa-solid fa-pause"></i> <span>장 일시정지</span>' : '<i class="fa-solid fa-play"></i> <span>거래 재개</span>';
+      updateTimerDisplay();
+    }
+
+    function teacherRestartMarket() {
+      marketSeconds = marketConfigMinutes * 60;
+      marketState = 'WAITING';
+      updateTimerDisplay();
+    }
+
+    function setMinutes(m) {
+      marketConfigMinutes = Math.max(1, Math.min(60, m));
+      document.getElementById('teacherMinutesInput').value = marketConfigMinutes;
+      document.getElementById('teacherResetText').textContent = `${marketConfigMinutes}분 재설정`;
+      if (marketState === 'WAITING' || marketState === 'CLOSED') {
+        marketSeconds = marketConfigMinutes * 60;
+        updateTimerDisplay();
+      }
+    }
+    function adjustMinutes(d) { setMinutes(marketConfigMinutes + d); }
+    function onMinutesInputChange(v) { setMinutes(parseInt(v, 10) || 10); }
+
+    function setSeedMoney(amount) {
+      const clamped = Math.max(100000, amount);
+      SEED_MONEY = clamped;
+      document.getElementById('teacherSeedInput').value = clamped;
+      document.getElementById('teacherSeedDisplay').textContent = '현재 설정: ' + clamped.toLocaleString() + '원';
+      if (student.tradeCount === 0 && Object.keys(student.portfolio).length === 0) {
+        student.cash = clamped;
+        student.totalAsset = clamped;
+        student.profitRate = 0;
+        updateAssets();
+        calculateOrderTotal();
+      }
+    }
+    function onSeedInputChange(v) { setSeedMoney(parseInt(v, 10) || 100000); }
+
+    function teacherGiveSubsidy(amt) {
+      student.cash += amt;
+      updateAssets();
+      calculateOrderTotal();
+      alert(`지원금 +${amt.toLocaleString()}원이 지급되었습니다.`);
+    }
+
+    function renderTeacherShocks() {
+      const goodGrid = document.getElementById('gridGoodShocks');
+      goodGrid.innerHTML = GOOD_SHOCKS.map(s => `
+        <button onclick='applyShock(${JSON.stringify(s)})' class="p-3 rounded-2xl bg-white hover:bg-rose-50 border border-rose-200 text-left transition shadow-2xs flex flex-col justify-between cursor-pointer">
+          <div>
+            <div class="flex justify-between items-center font-black text-xs text-rose-700 pb-1 border-b border-rose-100">
+              <span>${s.title}</span>
+              <span class="px-1.5 py-0.2 rounded bg-rose-100 text-rose-700 text-[10px]">${s.rateStr}</span>
+            </div>
+            <p class="text-[11px] text-slate-700 mt-2 leading-relaxed font-medium">${s.msg}</p>
+          </div>
+          <div class="mt-2.5 pt-1 border-t border-rose-100 text-[10px] font-bold text-slate-500">수혜: ${s.shockSector}</div>
+        </button>
+      `).join('');
+
+      const badGrid = document.getElementById('gridBadShocks');
+      badGrid.innerHTML = BAD_SHOCKS.map(s => `
+        <button onclick='applyShock(${JSON.stringify(s)})' class="p-3 rounded-2xl bg-white hover:bg-blue-50 border border-blue-200 text-left transition shadow-2xs flex flex-col justify-between cursor-pointer">
+          <div>
+            <div class="flex justify-between items-center font-black text-xs text-blue-700 pb-1 border-b border-blue-100">
+              <span>${s.title}</span>
+              <span class="px-1.5 py-0.2 rounded bg-blue-100 text-blue-700 text-[10px]">${s.rateStr}</span>
+            </div>
+            <p class="text-[11px] text-slate-700 mt-2 leading-relaxed font-medium">${s.msg}</p>
+          </div>
+          <div class="mt-2.5 pt-1 border-t border-blue-100 text-[10px] font-bold text-slate-500">피해: ${s.shockSector}</div>
+        </button>
+      `).join('');
+    }
+
+    // QR 모달
+    function openQRModal() {
+      const m = document.getElementById('qrModal');
+      m.classList.remove('hidden');
+      const pills = document.getElementById('qrClassPills');
+      const classes = ['1반', '2반', '3반', '4반', '5반', '6반', '7반', '8반', '9반', '10반'];
+      pills.innerHTML = classes.map(c => `
+        <button onclick="selectQRClass('${c}')" class="px-3 py-1 rounded-xl text-xs font-black transition cursor-pointer ${selectedClass === c ? 'bg-indigo-600 text-white' : 'bg-white text-slate-700 border border-slate-200'}">${c}</button>
+      `).join('');
+      renderQRCodeCanvas();
+    }
+    function selectQRClass(cls) {
+      selectedClass = cls;
+      openQRModal();
+      document.getElementById('headerRoomBadge').textContent = cls;
+    }
+    function toggleQRModal(show) {
+      document.getElementById('qrModal').classList.toggle('hidden', !show);
+    }
+    function renderQRCodeCanvas() {
+      const container = document.getElementById('qrcodeCanvasContainer');
+      container.innerHTML = '';
+      document.getElementById('qrTargetClassLabel').textContent = `KRX 모의주식 [${selectedClass}] 입장 QR`;
+      const classNumMatch = selectedClass.match(/\d+/);
+      const classNum = classNumMatch ? classNumMatch[0] : '1';
+      const baseUrl = 'https://kia6073-ux.github.io/sik/';
+      const url = `${baseUrl}?room=${encodeURIComponent(selectedClass)}&class=${classNum}`;
+      if (window.QRCode) {
+        new QRCode(container, { text: url, width: 200, height: 200 });
+      }
+    }
+
+    function initChart() {
+      const canvas = document.getElementById('stockCanvas');
+      window.addEventListener('resize', drawChart);
+      setTimeout(drawChart, 100);
+    }
+
+    function drawChart() {
+      const canvas = document.getElementById('stockCanvas');
+      if (!canvas) return;
+      const rect = canvas.getBoundingClientRect();
+      const dpr = window.devicePixelRatio || 1;
+      canvas.width = rect.width * dpr;
+      canvas.height = rect.height * dpr;
+      const ctx = canvas.getContext('2d');
+      ctx.scale(dpr, dpr);
+      const w = rect.width;
+      const h = rect.height;
+      ctx.clearRect(0, 0, w, h);
+
+      const s = ALL_STOCKS.find(st => st.id === selectedStockId);
+      if (!s) return;
+
+      const pad = { top: 16, bottom: 20, left: 16, right: 70 };
+      const chartW = w - pad.left - pad.right;
+      const chartH = h - pad.top - pad.bottom;
+      const data = s.history;
+      const allVals = [...data, s.base];
+      const maxVal = Math.max(...allVals) * 1.002;
+      const minVal = Math.min(...allVals) * 0.998;
+      const range = maxVal - minVal || 1;
+
+      const getY = v => pad.top + chartH - ((v - minVal) / range) * chartH;
+      const isUp = s.diff >= 0;
+      const color = isUp ? '#e11d48' : '#2563eb';
+
+      ctx.beginPath();
+      data.forEach((v, i) => {
+        const x = pad.left + (i / (data.length - 1 || 1)) * chartW;
+        const y = getY(v);
+        if (i === 0) ctx.moveTo(x, y);
+        else ctx.lineTo(x, y);
+      });
+      ctx.strokeStyle = color;
+      ctx.lineWidth = 2.5;
+      ctx.stroke();
+
+      const lastX = pad.left + chartW;
+      const lastY = getY(s.price);
+      ctx.fillStyle = color;
+      ctx.font = 'bold 11px Pretendard, monospace';
+      ctx.fillText(`${s.price.toLocaleString()}원`, lastX + 6, lastY + 4);
+    }
+  </script>
+</body>
+</html>
