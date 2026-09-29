@@ -1,0 +1,3166 @@
+<!DOCTYPE html>
+<html lang="ko">
+<head>
+  <meta charset="UTF-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1.0, maximum-scale=1.0, user-scalable=no">
+  <title>KRX 실전 모의주식 - 한국거래소 실시간 교실 시뮬레이터</title>
+  <!-- Tailwind CSS -->
+  <script src="https://cdn.tailwindcss.com"></script>
+  <!-- FontAwesome Icons -->
+  <link rel="stylesheet" href="https://cdnjs.cloudflare.com/ajax/libs/font-awesome/6.5.1/css/all.min.css">
+  <!-- QRCode.js -->
+  <script src="https://cdnjs.cloudflare.com/ajax/libs/qrcodejs/1.0.0/qrcode.min.js"></script>
+  <!-- MQTT.js for Realtime Zero-Config Cross-Device WebSocket Sync -->
+  <script src="https://cdnjs.cloudflare.com/ajax/libs/mqtt/5.5.0/mqtt.min.js"></script>
+  <script>
+    tailwind.config = {
+      theme: {
+        extend: {
+          fontFamily: {
+            sans: ['Pretendard', '-apple-system', 'BlinkMacSystemFont', 'Segoe UI', 'Roboto', 'sans-serif'],
+          }
+        }
+      }
+    };
+  </script>
+  <style>
+    ::-webkit-scrollbar { width: 4px; height: 4px; }
+    ::-webkit-scrollbar-track { background: #f8fafc; border-radius: 4px; }
+    ::-webkit-scrollbar-thumb { background: #cbd5e1; border-radius: 4px; }
+    ::-webkit-scrollbar-thumb:hover { background: #94a3b8; }
+    .no-scrollbar::-webkit-scrollbar { display: none; }
+    .no-scrollbar { -ms-overflow-style: none; scrollbar-width: none; }
+    .num-font { font-feature-settings: "tnum"; font-variant-numeric: tabular-nums; }
+    html, body { height: 100vh; width: 100vw; margin: 0; padding: 0; overflow: hidden; user-select: none; font-size: 13px; }
+  </style>
+</head>
+<body class="bg-slate-100 text-slate-800 font-sans flex flex-col h-screen w-screen overflow-hidden antialiased">
+
+  <!-- 상단 글로벌 헤더 -->
+  <header class="h-12 bg-white border-b border-slate-200 px-3 flex items-center justify-between flex-shrink-0 z-20 shadow-xs">
+    <div class="flex items-center gap-2">
+      <div onclick="handleSecretTeacherTrigger()" title="실전 모의주식 (교사는 5회 클릭 또는 Ctrl+1)" class="w-8 h-8 rounded-lg bg-gradient-to-tr from-rose-500 to-indigo-600 flex items-center justify-center text-white shadow-xs text-sm font-black cursor-pointer select-none">
+        <i class="fa-solid fa-chart-line"></i>
+      </div>
+      <div>
+        <div class="flex items-center gap-1.5">
+          <h1 class="font-black text-sm md:text-base text-slate-900 tracking-tight">실전 모의주식</h1>
+          <span class="px-1.5 py-0.5 rounded text-[11px] font-extrabold bg-indigo-50 text-indigo-700 border border-indigo-200">KRX 단독 실행형</span>
+        </div>
+      </div>
+      <button id="headerQRBtn" onclick="openQRModal()" style="display: none;" class="ml-1 px-2.5 py-1 rounded-lg bg-indigo-50 hover:bg-indigo-100 text-indigo-700 text-xs font-black border border-indigo-200 items-center gap-1.5 shadow-2xs transition cursor-pointer">
+        <i class="fa-solid fa-qrcode"></i>
+        <span id="headerRoomBadge">반별 QR코드</span>
+      </button>
+    </div>
+
+    <!-- 실시간 인원 -->
+    <div class="flex items-center gap-1.5 px-2.5 py-1 rounded-lg bg-emerald-50 border border-emerald-200 text-xs font-extrabold text-emerald-800">
+      <i class="fa-solid fa-users text-emerald-600"></i>
+      <span>참여 학생:</span>
+      <span id="headerLiveCount" class="font-mono text-emerald-950 font-black text-sm">0</span><span>명</span>
+      <span class="w-2 h-2 rounded-full bg-emerald-500 animate-ping"></span>
+    </div>
+
+    <!-- 정규장 타이머 -->
+    <div class="flex items-center gap-2 bg-slate-50 border border-slate-200 rounded-xl px-2.5 py-1">
+      <div class="flex items-center gap-1.5">
+        <span id="marketDot" class="w-2 h-2 rounded-full bg-amber-500 animate-pulse"></span>
+        <span id="marketStatusText" class="text-xs font-black text-slate-700">개장 대기</span>
+      </div>
+      <div class="h-3.5 w-px bg-slate-300"></div>
+      <div class="flex items-center gap-1">
+        <i class="fa-regular fa-clock text-slate-400 text-xs"></i>
+        <span id="marketTimerText" class="text-xs md:text-sm font-black font-mono text-amber-600 num-font tracking-tight">10:00</span>
+      </div>
+    </div>
+
+    <!-- 유저 프로필 & 자산 -->
+    <div class="flex items-center gap-2">
+      <button onclick="openLoginModal()" class="flex items-center gap-1.5 px-2.5 py-1 rounded-lg bg-indigo-50 hover:bg-indigo-100 border border-indigo-200 text-left transition cursor-pointer">
+        <div class="w-6 h-6 rounded-md bg-indigo-600 text-white flex items-center justify-center text-xs font-black">
+          <i class="fa-solid fa-graduation-cap"></i>
+        </div>
+        <div>
+          <div id="headerStudentName" class="text-xs font-black text-indigo-950 leading-tight">로그인 대기</div>
+          <div id="headerStudentClass" class="text-[10px] font-bold text-indigo-600">계좌 미개설</div>
+        </div>
+      </button>
+
+      <div class="hidden sm:flex items-center gap-2 bg-slate-50 border border-slate-200 rounded-lg px-2.5 py-1">
+        <div class="text-right">
+          <div class="text-[10px] font-bold text-slate-400">총 자산</div>
+          <div id="headerTotalAsset" class="text-xs font-black text-slate-800 num-font">10,000,000원</div>
+        </div>
+        <div class="h-4 w-px bg-slate-200"></div>
+        <div class="text-right">
+          <div class="text-[10px] font-bold text-slate-400">수익률</div>
+          <div id="headerTotalRate" class="text-xs font-black text-slate-600 num-font">0.00%</div>
+        </div>
+      </div>
+    </div>
+  </header>
+
+  <!-- 뉴스 티커 -->
+  <div class="h-8 bg-slate-900 border-b border-slate-800 px-3 flex items-center justify-between text-white flex-shrink-0 z-10 shadow-xs">
+    <div onclick="openNewsHistoryModal()" class="flex items-center gap-2 cursor-pointer hover:opacity-90 transition group" title="클릭 시 지금까지 나온 모든 뉴스 속보 목록 보기">
+      <div class="flex items-center gap-1 px-2 py-0.5 rounded bg-gradient-to-r from-rose-600 to-indigo-600 text-[11px] font-black group-hover:scale-105 transition">
+        <i class="fa-solid fa-bullhorn text-[10px]"></i>
+        <span>뉴스 속보</span>
+        <span class="text-[9px] bg-white/20 px-1 py-0.2 rounded ml-0.5">전체보기</span>
+      </div>
+      <span class="w-2 h-2 rounded-full bg-emerald-400 animate-pulse"></span>
+    </div>
+    <div id="topNewsContainer" onclick="handleTopNewsClick()" class="flex-1 mx-3 truncate text-xs font-bold text-slate-200 cursor-pointer hover:text-amber-300 transition flex items-center gap-1.5" title="클릭 시 전체 뉴스 기사 목록 보기">
+      <span id="topNewsBadge" class="px-1.5 py-0.2 rounded text-[10px] font-black bg-rose-900/80 text-rose-300 border border-rose-700/60 flex-shrink-0">삼성전자</span>
+      <span id="topNewsText" class="truncate">차세대 12단 HBM3E 글로벌 빅테크 퀄테스트 전격 통과... 수주 잭팟 기대</span>
+      <i class="fa-solid fa-list-ul text-[10px] text-slate-400 ml-1"></i>
+    </div>
+    <div class="text-[11px] font-mono text-slate-400">KRX 틱 연동</div>
+  </div>
+
+  <!-- 메인 레이아웃 -->
+  <main class="flex-1 min-h-0 p-2 grid grid-cols-12 gap-2 overflow-hidden">
+    <!-- 좌측 종목 탐색 -->
+    <section class="col-span-12 md:col-span-4 xl:col-span-3 bg-white rounded-2xl border border-slate-200 flex flex-col min-h-0 overflow-hidden shadow-2xs">
+      <div class="p-2 border-b border-slate-100 flex flex-col gap-1.5 bg-slate-50/70 flex-shrink-0">
+        <div class="flex items-center justify-between">
+          <span class="text-xs font-black text-slate-800">대표 종목 탐색</span>
+          <span id="stockCountBadge" class="text-[11px] font-bold text-indigo-600 bg-indigo-50 border border-indigo-200 px-2 py-0.5 rounded-full">100개사</span>
+        </div>
+        <div id="categoryContainer" class="flex gap-1 overflow-x-auto no-scrollbar py-0.5"></div>
+        <div class="relative">
+          <i class="fa-solid fa-magnifying-glass absolute left-2.5 top-2 text-slate-400 text-xs"></i>
+          <input id="searchInput" oninput="handleSearch(this.value)" type="text" placeholder="종목명/상품 검색" class="w-full pl-8 pr-2 py-1 bg-white border border-slate-200 rounded-lg text-xs font-semibold focus:outline-none focus:border-indigo-500">
+        </div>
+      </div>
+      <div id="stockListContainer" class="flex-1 min-h-0 overflow-y-auto divide-y divide-slate-100 pb-16"></div>
+    </section>
+
+    <!-- 중앙 기업 상세 & 차트 -->
+    <section class="col-span-12 md:col-span-5 xl:col-span-6 flex flex-col min-h-0 gap-2 overflow-hidden">
+      <div class="bg-white rounded-2xl border border-slate-200 p-3 flex flex-col gap-1.5 shadow-2xs flex-shrink-0">
+        <div class="flex items-start justify-between gap-1">
+          <div>
+            <div class="flex items-center gap-2 flex-wrap">
+              <span id="detailIcon" class="text-2xl">📱</span>
+              <h2 id="detailName" class="text-lg font-black text-slate-900 tracking-tight">삼성전자</h2>
+              <span id="detailCode" class="text-[11px] font-mono font-bold text-slate-400 bg-slate-100 px-1.5 py-0.5 rounded">005930</span>
+              <span id="detailCat" class="text-[11px] font-bold text-indigo-700 bg-indigo-50 border border-indigo-200 px-2 py-0.5 rounded-full">IT/반도체</span>
+            </div>
+            <div class="flex items-baseline gap-2 mt-1">
+              <span id="detailPrice" class="text-2xl md:text-3xl font-black text-rose-600 num-font">284,000원</span>
+              <span id="detailRate" class="text-xs md:text-sm font-black text-rose-600 num-font">+7,500 (+2.71%)</span>
+            </div>
+          </div>
+          <div class="text-right flex-shrink-0">
+            <div class="text-[10px] font-bold text-slate-400">KRX 가격제한폭 (±30%)</div>
+            <div class="flex items-center gap-1 mt-0.5">
+              <span id="detailBase" class="text-[10px] font-black text-slate-600 bg-slate-100 border border-slate-200 px-1.5 py-0.5 rounded num-font">기준 284,000</span>
+              <span id="detailLimitHigh" class="text-[10px] font-black text-rose-600 bg-rose-50 border border-rose-200 px-1.5 py-0.5 rounded num-font">상 369,000</span>
+              <span id="detailLimitLow" class="text-[10px] font-black text-blue-600 bg-blue-50 border border-blue-200 px-1.5 py-0.5 rounded num-font">하 199,000</span>
+            </div>
+          </div>
+        </div>
+        <p id="detailDesc" class="text-xs font-medium text-slate-700 bg-slate-50 p-2 rounded-xl border border-slate-100 leading-snug truncate">
+          갤럭시 스마트폰, DRAM, 초고성능 HBM 메모리를 만드는 한국 시가총액 1위 대표 기업입니다.
+        </p>
+        <div class="space-y-0.5 pt-0.5">
+          <div class="flex justify-between text-[10px] font-black">
+            <span class="text-blue-600">하한가 (-30%)</span>
+            <span class="text-slate-500 font-bold">기준가 (0%)</span>
+            <span class="text-rose-600">상한가 (+30%)</span>
+          </div>
+          <div class="w-full h-1.5 bg-slate-100 rounded-full overflow-hidden flex border border-slate-200">
+            <div id="gaugeBar" class="h-full bg-gradient-to-r from-blue-500 via-slate-300 to-rose-500 rounded-full transition-all duration-300" style="width: 50%;"></div>
+          </div>
+        </div>
+      </div>
+
+      <div class="flex-1 min-h-0 bg-white rounded-2xl border border-slate-200 p-2.5 flex flex-col shadow-2xs overflow-hidden">
+        <div class="flex items-center justify-between pb-1 border-b border-slate-100 flex-shrink-0">
+          <div class="flex items-center gap-1.5">
+            <button id="btnDetailTabChart" onclick="switchDetailView('chart')" class="px-2.5 py-1 rounded-lg text-xs font-black transition cursor-pointer bg-indigo-600 text-white shadow-2xs flex items-center gap-1.5">
+              <i class="fa-solid fa-chart-line"></i>
+              <span>실시간 틱 차트</span>
+            </button>
+            <button id="btnDetailTabNews" onclick="switchDetailView('news')" class="px-2.5 py-1 rounded-lg text-xs font-black transition cursor-pointer bg-slate-100 text-slate-600 hover:bg-slate-200 flex items-center gap-1.5">
+              <i class="fa-regular fa-newspaper"></i>
+              <span>종목 뉴스·공시</span>
+              <span id="detailNewsCountBadge" class="px-1.5 py-0.2 rounded-full text-[10px] font-black bg-rose-500 text-white">3</span>
+            </button>
+          </div>
+          <span class="text-[11px] font-mono text-slate-500 flex items-center gap-1">
+            <span class="w-2 h-2 rounded-full bg-emerald-500 animate-ping"></span>
+            <span id="detailStatusLabel">실시간 갱신 중</span>
+          </span>
+        </div>
+        
+        <!-- 차트 뷰 -->
+        <div id="detailChartView" class="flex-1 min-h-0 relative mt-1">
+          <canvas id="stockCanvas" class="w-full h-full block rounded-xl bg-slate-50/70 border border-slate-100"></canvas>
+        </div>
+
+        <!-- 종목 뉴스 목록 뷰 -->
+        <div id="detailNewsView" class="hidden flex-1 min-h-0 mt-1 flex flex-col overflow-hidden bg-slate-50/60 rounded-xl border border-slate-100">
+          <div class="p-2 border-b border-slate-200 bg-white/80 flex items-center justify-between text-xs">
+            <span class="font-black text-slate-800 flex items-center gap-1">
+              <span id="newsViewStockName" class="text-indigo-600 font-black">삼성전자</span> 최신 주요 뉴스 및 단독 보도
+            </span>
+            <span class="text-[10px] text-slate-400">헤드라인 클릭 시 전체 기사 전문을 읽을 수 있습니다.</span>
+          </div>
+          <div id="stockNewsListContainer" class="flex-1 min-h-0 overflow-y-auto divide-y divide-slate-100 p-1">
+            <!-- JS에서 종목별 뉴스 카드 렌더링 -->
+          </div>
+        </div>
+      </div>
+    </section>
+
+    <!-- 우측 주문 패드 & 포트폴리오 -->
+    <section class="col-span-12 md:col-span-3 xl:col-span-3 flex flex-col min-h-0 gap-2 overflow-hidden">
+      <div class="bg-white rounded-2xl border border-slate-200 p-3 flex flex-col gap-2 shadow-2xs flex-shrink-0">
+        <div class="flex items-center justify-between pb-1 border-b border-slate-100">
+          <span class="text-xs font-black text-slate-800 flex items-center gap-1">
+            <i class="fa-solid fa-bolt text-amber-500"></i> 초간편 주문
+          </span>
+          <span class="text-[11px] font-bold text-emerald-600 bg-emerald-50 px-2 py-0.5 rounded-full border border-emerald-200">즉시 체결</span>
+        </div>
+        <div class="grid grid-cols-2 gap-1.5 text-xs">
+          <div class="bg-slate-50 p-2 rounded-xl border border-slate-100">
+            <div class="text-[10px] font-semibold text-slate-400">주문가능 현금</div>
+            <div id="orderCash" class="font-mono font-black text-slate-900 num-font truncate">10,000,000원</div>
+          </div>
+          <div class="bg-slate-50 p-2 rounded-xl border border-slate-100">
+            <div class="text-[10px] font-semibold text-slate-400">현재 보유량</div>
+            <div id="orderHeld" class="font-mono font-black text-indigo-700 num-font">0주</div>
+          </div>
+        </div>
+        <div class="space-y-1">
+          <div class="flex justify-between text-xs font-bold text-slate-500">
+            <span>주문 수량(주)</span>
+            <span id="orderMaxHint" class="text-indigo-600 font-black">최대 매수: 0주</span>
+          </div>
+          <div class="flex items-center gap-1">
+            <button onclick="changeQty(-10)" class="w-7 h-7 rounded-lg bg-slate-100 hover:bg-slate-200 text-slate-700 font-black text-xs cursor-pointer">-10</button>
+            <button onclick="changeQty(-1)" class="w-7 h-7 rounded-lg bg-slate-100 hover:bg-slate-200 text-slate-700 font-black text-xs cursor-pointer">-1</button>
+            <input id="orderQtyInput" oninput="calculateOrderTotal()" type="number" min="1" value="1" class="flex-1 h-7 bg-white border border-slate-200 rounded-lg text-center font-mono font-black text-xs text-slate-900 focus:outline-none focus:border-indigo-500 num-font">
+            <button onclick="changeQty(1)" class="w-7 h-7 rounded-lg bg-slate-100 hover:bg-slate-200 text-slate-700 font-black text-xs cursor-pointer">+1</button>
+            <button onclick="changeQty(10)" class="w-7 h-7 rounded-lg bg-slate-100 hover:bg-slate-200 text-slate-700 font-black text-xs cursor-pointer">+10</button>
+          </div>
+          <div class="grid grid-cols-4 gap-1">
+            <button onclick="setPercent(0.1)" class="py-1 rounded-lg bg-slate-100 hover:bg-slate-200 text-slate-600 font-black text-[10px] cursor-pointer">10%</button>
+            <button onclick="setPercent(0.25)" class="py-1 rounded-lg bg-slate-100 hover:bg-slate-200 text-slate-600 font-black text-[10px] cursor-pointer">25%</button>
+            <button onclick="setPercent(0.5)" class="py-1 rounded-lg bg-slate-100 hover:bg-slate-200 text-slate-600 font-black text-[10px] cursor-pointer">50%</button>
+            <button onclick="setPercent(1.0)" class="py-1 rounded-lg bg-indigo-50 hover:bg-indigo-100 text-indigo-700 font-black text-[10px] border border-indigo-200 cursor-pointer">최대</button>
+          </div>
+        </div>
+        <div class="p-2 rounded-xl bg-indigo-50/70 border border-indigo-100 flex justify-between items-center text-xs">
+          <span class="font-bold text-indigo-900">총 주문금액</span>
+          <span id="orderTotalCost" class="font-black text-indigo-700 num-font text-xs">284,000원</span>
+        </div>
+        <div class="grid grid-cols-2 gap-2">
+          <button onclick="executeTrade('BUY')" class="h-10 rounded-xl bg-rose-600 hover:bg-rose-700 text-white font-black text-xs flex items-center justify-center gap-1.5 shadow-md transition active:scale-95 cursor-pointer">
+            <i class="fa-solid fa-arrow-trend-up"></i>
+            <span>매수 (사기)</span>
+          </button>
+          <button onclick="executeTrade('SELL')" class="h-10 rounded-xl bg-blue-600 hover:bg-blue-700 text-white font-black text-xs flex items-center justify-center gap-1.5 shadow-md transition active:scale-95 cursor-pointer">
+            <i class="fa-solid fa-arrow-trend-down"></i>
+            <span>매도 (팔기)</span>
+          </button>
+        </div>
+      </div>
+
+      <!-- 포트폴리오 -->
+      <div class="flex-1 min-h-0 bg-white rounded-2xl border border-slate-200 p-3 flex flex-col shadow-2xs overflow-hidden">
+        <div class="flex items-center justify-between pb-1.5 border-b border-slate-100 flex-shrink-0">
+          <span class="text-xs font-black text-slate-800 flex items-center gap-1.5">
+            <i class="fa-solid fa-wallet text-indigo-600"></i> 보유 주식 현황
+          </span>
+          <span id="portfolioCount" class="text-xs font-bold text-slate-500 bg-slate-100 px-2 py-0.5 rounded-full">0종목</span>
+        </div>
+        <div id="portfolioList" class="flex-1 min-h-0 overflow-y-auto divide-y divide-slate-100 pt-1 pb-10"></div>
+      </div>
+    </section>
+  </main>
+
+  <!-- 학생 로그인 모달 -->
+  <div id="loginModal" class="fixed inset-0 bg-slate-900/60 backdrop-blur-xs z-50 flex items-center justify-center p-4">
+    <div class="bg-white rounded-3xl border border-slate-200 shadow-2xl max-w-sm w-full p-6 text-center">
+      <div class="w-12 h-12 rounded-2xl bg-indigo-600 text-white mx-auto flex items-center justify-center text-xl font-black shadow-md mb-3">
+        <i class="fa-solid fa-graduation-cap"></i>
+      </div>
+      <h3 class="text-base font-black text-slate-900 tracking-tight">학생 모의투자 계좌 개설</h3>
+      <p class="text-xs font-medium text-slate-500 mt-1 mb-4">학번과 이름을 입력하면 선생님 화면에 즉시 등록됩니다.</p>
+      <form onsubmit="handleLoginSubmit(event)" class="space-y-3.5 text-left">
+        <div class="grid grid-cols-2 gap-2">
+          <div>
+            <label class="block text-xs font-bold text-slate-600 mb-1">학급 (반)</label>
+            <div class="flex items-center gap-1">
+              <span class="text-xs font-black text-slate-700">3학년</span>
+              <input id="inputClass" type="number" min="1" max="20" value="1" required class="flex-1 px-2 py-1.5 bg-slate-50 border border-slate-200 rounded-lg text-xs font-black text-center focus:outline-none focus:border-indigo-500">
+              <span class="text-xs font-black text-slate-700">반</span>
+            </div>
+          </div>
+          <div>
+            <label class="block text-xs font-bold text-slate-600 mb-1">번호</label>
+            <div class="flex items-center gap-1">
+              <input id="inputNumber" type="number" min="1" max="45" value="1" required class="flex-1 px-2 py-1.5 bg-slate-50 border border-slate-200 rounded-lg text-xs font-black text-center focus:outline-none focus:border-indigo-500">
+              <span class="text-xs font-black text-slate-700">번</span>
+            </div>
+          </div>
+        </div>
+        <div>
+          <label class="block text-xs font-bold text-slate-600 mb-1">학생 이름 (실명)</label>
+          <input id="inputName" type="text" placeholder="예: 김민준" required class="w-full px-3 py-2 bg-slate-50 border border-slate-200 rounded-xl text-xs font-bold focus:outline-none focus:border-indigo-500">
+        </div>
+        <div class="bg-indigo-50/80 border border-indigo-100 p-3 rounded-2xl flex items-center justify-between">
+          <span class="text-xs font-black text-indigo-950">초기 투자금</span>
+          <span id="loginSeedDisplay" class="text-xs font-black text-indigo-700 num-font bg-white px-2.5 py-1 rounded-xl border border-indigo-200">10,000,000원</span>
+        </div>
+        <button type="submit" class="w-full py-3 bg-indigo-600 hover:bg-indigo-700 text-white rounded-xl font-black text-xs shadow-md transition active:scale-95 flex items-center justify-center gap-1.5 cursor-pointer">
+          <i class="fa-solid fa-arrow-right-to-bracket"></i>
+          <span>계좌 개설 및 시장 입장</span>
+        </button>
+      </form>
+    </div>
+  </div>
+
+  <!-- 교사용 관제 센터 모달 -->
+  <div id="teacherModal" class="hidden fixed inset-0 z-50 flex items-center justify-center p-3 bg-slate-900/75 backdrop-blur-xs">
+    <div class="bg-white rounded-3xl border border-slate-200 shadow-2xl max-w-5xl w-full p-4 md:p-5 flex flex-col max-h-[95vh] overflow-hidden">
+      <div class="flex items-center justify-between pb-3 border-b border-slate-200 flex-shrink-0">
+        <div class="flex items-center gap-3">
+          <div class="w-10 h-10 rounded-2xl bg-indigo-600 text-white flex items-center justify-center text-sm font-black shadow-md">
+            <i class="fa-solid fa-chalkboard-user"></i>
+          </div>
+          <div>
+            <div class="flex items-center gap-2">
+              <h3 class="text-base font-black text-slate-900">교사용 실시간 관제 센터</h3>
+              <span class="px-2 py-0.5 rounded text-[11px] font-black bg-rose-50 text-rose-700 border border-rose-200">단축키: Ctrl + 1 (교사모드)</span>
+            </div>
+            <p class="text-xs text-slate-500 font-medium">실시간 동기화 상태: 학생이 접속하면 아래 표와 랭킹에 즉시 나타납니다.</p>
+          </div>
+        </div>
+        <div class="flex items-center gap-2">
+          <button onclick="openQRModal()" class="px-3 py-1.5 rounded-xl bg-indigo-50 hover:bg-indigo-100 text-indigo-700 text-xs font-black border border-indigo-200 flex items-center gap-1.5 shadow-2xs transition cursor-pointer">
+            <i class="fa-solid fa-qrcode"></i>
+            <span>반별 QR코드 열기</span>
+          </button>
+          <button onclick="toggleTeacherModal(false)" class="w-8 h-8 rounded-xl bg-slate-100 hover:bg-slate-200 text-slate-600 flex items-center justify-center transition cursor-pointer">
+            <i class="fa-solid fa-xmark"></i>
+          </button>
+        </div>
+      </div>
+
+      <!-- 제어 바 -->
+      <div class="my-2.5 p-3 rounded-2xl bg-slate-50 border border-slate-200 flex flex-col gap-2.5 flex-shrink-0">
+        <div class="flex flex-wrap items-center justify-between gap-2">
+          <div class="flex items-center gap-2 flex-wrap">
+            <button id="btnTeacherMarketToggle" onclick="teacherToggleMarket()" class="px-3.5 py-1.5 rounded-xl text-xs font-black shadow-xs transition flex items-center gap-1.5 cursor-pointer text-white bg-emerald-600 hover:bg-emerald-700">
+              <i class="fa-solid fa-play"></i> <span>정규장 개장 (시작)</span>
+            </button>
+            <button onclick="teacherRestartMarket()" class="px-3 py-1.5 bg-slate-700 hover:bg-slate-800 text-white rounded-xl text-xs font-black shadow-xs transition flex items-center gap-1.5 cursor-pointer">
+              <i class="fa-solid fa-rotate-left"></i> <span id="teacherResetText">10분 재설정</span>
+            </button>
+            <button onclick="teacherGiveSubsidy(500000)" class="px-3 py-1.5 bg-indigo-600 hover:bg-indigo-700 text-white rounded-xl text-xs font-black shadow-xs transition flex items-center gap-1.5 cursor-pointer">
+              <i class="fa-solid fa-hand-holding-dollar"></i> <span>전원 지원금 (+50만)</span>
+            </button>
+          </div>
+          <div class="text-xs font-bold text-slate-500 flex items-center gap-2">
+            <span>실시간 접속 학생: <strong id="teacherStudentCount" class="font-mono font-black text-indigo-700 text-sm">0명</strong></span>
+            <span class="w-2 h-2 rounded-full bg-emerald-500 animate-ping"></span>
+          </div>
+        </div>
+
+        <!-- 1~60분 설정 -->
+        <div class="flex flex-wrap items-center justify-between gap-2 pt-2 border-t border-slate-200">
+          <div class="flex items-center gap-2 flex-wrap">
+            <span class="text-xs font-black text-indigo-950 flex items-center gap-1">
+              <i class="fa-regular fa-clock text-indigo-600"></i> 장 운영 시간 (1~60분):
+            </span>
+            <div class="flex items-center bg-white rounded-xl border border-slate-300 shadow-2xs overflow-hidden">
+              <button onclick="adjustMinutes(-1)" class="w-7 h-7 bg-slate-100 hover:bg-slate-200 text-slate-700 font-black text-xs cursor-pointer">-</button>
+              <input id="teacherMinutesInput" oninput="onMinutesInputChange(this.value)" type="number" min="1" max="60" value="10" class="w-12 h-7 text-center text-xs font-black text-indigo-700 bg-white focus:outline-none num-font">
+              <button onclick="adjustMinutes(1)" class="w-7 h-7 bg-slate-100 hover:bg-slate-200 text-slate-700 font-black text-xs cursor-pointer">+</button>
+            </div>
+            <span class="text-xs font-bold text-slate-600">분</span>
+            <div class="flex items-center gap-1 ml-1 flex-wrap">
+              <button onclick="setMinutes(1)" class="px-2 py-0.5 rounded-lg text-xs font-black bg-white hover:bg-indigo-50 text-slate-700 border border-slate-200 cursor-pointer">1분</button>
+              <button onclick="setMinutes(5)" class="px-2 py-0.5 rounded-lg text-xs font-black bg-white hover:bg-indigo-50 text-slate-700 border border-slate-200 cursor-pointer">5분</button>
+              <button onclick="setMinutes(10)" class="px-2 py-0.5 rounded-lg text-xs font-black bg-indigo-600 text-white cursor-pointer">10분</button>
+              <button onclick="setMinutes(20)" class="px-2 py-0.5 rounded-lg text-xs font-black bg-white hover:bg-indigo-50 text-slate-700 border border-slate-200 cursor-pointer">20분</button>
+              <button onclick="setMinutes(40)" class="px-2 py-0.5 rounded-lg text-xs font-black bg-white hover:bg-indigo-50 text-slate-700 border border-slate-200 cursor-pointer">40분</button>
+              <button onclick="setMinutes(45)" class="px-2 py-0.5 rounded-lg text-xs font-black bg-white hover:bg-indigo-50 text-slate-700 border border-slate-200 cursor-pointer">45분</button>
+              <button onclick="setMinutes(60)" class="px-2 py-0.5 rounded-lg text-xs font-black bg-white hover:bg-indigo-50 text-slate-700 border border-slate-200 cursor-pointer">60분</button>
+            </div>
+          </div>
+          <span class="text-[11px] text-slate-400 font-medium">※ 시간 변경 후 [재설정]을 누르면 학생 화면에 즉시 동기화됩니다.</span>
+        </div>
+
+        <!-- 초기 투자금 설정 -->
+        <div class="flex flex-wrap items-center justify-between gap-2 pt-2 border-t border-slate-200">
+          <div class="flex items-center gap-2 flex-wrap">
+            <span class="text-xs font-black text-indigo-950 flex items-center gap-1">
+              <i class="fa-solid fa-coins text-emerald-600"></i> 초기 투자금 설정:
+            </span>
+            <div class="flex items-center bg-white rounded-xl border border-slate-300 shadow-2xs px-2 py-0.5">
+              <input id="teacherSeedInput" oninput="onSeedInputChange(this.value)" type="number" min="100000" step="50000" value="10000000" class="w-28 text-right text-xs font-black text-emerald-700 bg-transparent focus:outline-none num-font pr-1">
+              <span class="text-xs font-bold text-slate-600">원</span>
+            </div>
+            <div class="flex items-center gap-1 ml-1 flex-wrap">
+              <button onclick="setSeedMoney(100000)" class="px-2 py-0.5 rounded-lg text-xs font-black bg-white hover:bg-emerald-50 text-slate-700 border border-slate-200 cursor-pointer">10만</button>
+              <button onclick="setSeedMoney(500000)" class="px-2 py-0.5 rounded-lg text-xs font-black bg-white hover:bg-emerald-50 text-slate-700 border border-slate-200 cursor-pointer">50만</button>
+              <button onclick="setSeedMoney(1000000)" class="px-2 py-0.5 rounded-lg text-xs font-black bg-white hover:bg-emerald-50 text-slate-700 border border-slate-200 cursor-pointer">100만</button>
+              <button onclick="setSeedMoney(5000000)" class="px-2 py-0.5 rounded-lg text-xs font-black bg-white hover:bg-emerald-50 text-slate-700 border border-slate-200 cursor-pointer">500만</button>
+              <button onclick="setSeedMoney(10000000)" class="px-2 py-0.5 rounded-lg text-xs font-black bg-emerald-600 text-white cursor-pointer">1,000만</button>
+              <button onclick="setSeedMoney(50000000)" class="px-2 py-0.5 rounded-lg text-xs font-black bg-white hover:bg-emerald-50 text-slate-700 border border-slate-200 cursor-pointer">5,000만</button>
+            </div>
+          </div>
+          <span id="teacherSeedDisplay" class="text-[11px] text-emerald-700 font-bold bg-emerald-50 px-2 py-0.5 rounded-md border border-emerald-200">
+            현재 설정: 10,000,000원
+          </span>
+        </div>
+
+        <!-- 거시경제 쇼크 20~30분 주기 & ON/OFF 토글 & 즉시 발동 -->
+        <div class="flex flex-wrap items-center justify-between gap-2 p-2.5 rounded-xl bg-indigo-50/90 border border-indigo-200">
+          <div class="flex items-center gap-3 flex-wrap">
+            <div class="flex items-center gap-1.5">
+              <span id="dotAutoShock" class="w-2.5 h-2.5 rounded-full bg-rose-500 animate-ping"></span>
+              <span class="text-xs font-black text-indigo-950">거시경제 자동 쇼크 (20~30분 주기):</span>
+            </div>
+            <button id="btnToggleAutoShock" onclick="toggleAutoShock()" class="px-3 py-1 rounded-xl text-xs font-black transition active:scale-95 bg-emerald-600 text-white cursor-pointer">
+              자동 발생: ON
+            </button>
+            <div id="boxCountdown" class="flex items-center gap-1 bg-white px-2.5 py-0.5 rounded-lg border border-indigo-200 shadow-2xs">
+              <span class="text-xs font-bold text-slate-500">다음 발동까지:</span>
+              <span id="teacherRandomCountdown" class="text-xs font-mono font-black text-rose-600 num-font">25:00</span>
+            </div>
+          </div>
+          <button onclick="triggerImmediateRandomShock()" class="px-3.5 py-1.5 rounded-xl bg-gradient-to-r from-rose-600 to-indigo-600 hover:from-rose-700 hover:to-indigo-700 text-white text-xs font-black flex items-center gap-1.5 shadow-md transition active:scale-95 cursor-pointer">
+            <i class="fa-solid fa-bolt text-amber-300"></i>
+            <span>⚡ 즉시 랜덤 거시쇼크 발동</span>
+          </button>
+        </div>
+      </div>
+
+      <!-- 네비게이션 탭 3종 -->
+      <div class="flex items-center gap-1 bg-slate-100 p-1 rounded-2xl border border-slate-200 text-xs font-black flex-shrink-0 mb-2">
+        <button id="btnTabTeacherRanking" onclick="switchTeacherTab('ranking')" class="flex-1 py-1.5 rounded-xl transition flex items-center justify-center gap-1.5 bg-white text-indigo-700 shadow-2xs cursor-pointer">
+          <i class="fa-solid fa-users"></i>
+          <span>👥 학생 관리 및 랭킹</span>
+        </button>
+        <button id="btnTabTeacherSector" onclick="switchTeacherTab('sector')" class="flex-1 py-1.5 rounded-xl transition flex items-center justify-center gap-1.5 text-slate-500 hover:text-slate-800 cursor-pointer">
+          <i class="fa-solid fa-building"></i>
+          <span>🏭 상위 업종/종목별 호재·악재 (8대 업종)</span>
+        </button>
+        <button id="btnTabTeacherMacro" onclick="switchTeacherTab('macro')" class="flex-1 py-1.5 rounded-xl transition flex items-center justify-center gap-1.5 text-slate-500 hover:text-slate-800 cursor-pointer">
+          <i class="fa-solid fa-globe"></i>
+          <span>🌐 거시경제 쇼크 20종 (호재 10종 / 악재 10종)</span>
+        </button>
+      </div>
+
+      <!-- 탭 1: 학생 관리 및 랭킹 패널 -->
+      <div id="panelTeacherRanking" class="flex-1 min-h-0 border border-slate-200 rounded-2xl overflow-hidden flex flex-col bg-white">
+        <div class="px-4 py-2 bg-slate-50 border-b border-slate-200 flex items-center justify-between flex-shrink-0">
+          <div class="flex items-center gap-2">
+            <span class="text-xs font-black text-slate-800">실시간 학급 학생 명단 및 수익률 현황</span>
+            <span class="px-2 py-0.5 rounded-full bg-emerald-100 text-emerald-800 text-[10px] font-black flex items-center gap-1">
+              <span class="w-1.5 h-1.5 rounded-full bg-emerald-600 animate-ping"></span>
+              실시간 자동 수신 중
+            </span>
+          </div>
+          <div class="flex items-center gap-1">
+            <button id="btnRankingViewStudents" onclick="toggleTeacherBannedView(false)" class="px-2.5 py-1 rounded-lg text-xs font-black transition cursor-pointer bg-indigo-600 text-white">
+              참여 학생 (<span id="teacherStudentTabCount">0</span>)
+            </button>
+            <button id="btnRankingViewBanned" onclick="toggleTeacherBannedView(true)" class="px-2.5 py-1 rounded-lg text-xs font-black transition cursor-pointer bg-slate-100 text-slate-600 hover:bg-slate-200">
+              강퇴 목록 (<span id="teacherBannedTabCount">0</span>)
+            </button>
+          </div>
+        </div>
+        <div class="flex-1 min-h-0 overflow-y-auto">
+          <table class="w-full text-left text-xs border-collapse">
+            <thead class="bg-slate-50 text-[11px] font-bold text-slate-500 sticky top-0 border-b border-slate-200 z-10">
+              <tr id="teacherTableHeaderRow">
+                <th class="py-2 px-3">순위</th>
+                <th class="py-2 px-3">학번</th>
+                <th class="py-2 px-3">이름</th>
+                <th class="py-2 px-3 text-right">총 평가자산</th>
+                <th class="py-2 px-3 text-right">수익률</th>
+                <th class="py-2 px-3 text-center">보유/거래</th>
+                <th class="py-2 px-3 text-center">상태</th>
+                <th class="py-2 px-3 text-center">관리</th>
+              </tr>
+            </thead>
+            <tbody id="teacherRankingTbody" class="divide-y divide-slate-100 font-semibold">
+              <!-- JS에서 렌더링 -->
+            </tbody>
+          </table>
+        </div>
+      </div>
+
+      <!-- 탭 2: 업종/종목별 호재·악재 패널 -->
+      <div id="panelTeacherSector" class="hidden flex-1 min-h-0 overflow-y-auto space-y-3 p-3 bg-slate-50 rounded-2xl border border-slate-200 flex flex-col">
+        <div class="p-3 bg-white rounded-2xl border border-indigo-200 shadow-2xs flex flex-col md:flex-row items-center justify-between gap-3 flex-shrink-0">
+          <div class="flex items-center gap-2.5">
+            <div class="w-8 h-8 rounded-xl bg-indigo-100 text-indigo-700 flex items-center justify-center font-black flex-shrink-0">🎯</div>
+            <div>
+              <div class="text-xs font-black text-slate-800">개별 특정 종목 직접 호재 / 악재 발동</div>
+              <div class="text-[11px] text-slate-500 font-medium">100개 상장사 중 원하는 특정 종목을 골라 즉시 개별 호재/악재를 발동합니다.</div>
+            </div>
+          </div>
+          <div class="flex items-center gap-2 flex-wrap justify-end">
+            <select id="teacherStockSelect" class="bg-slate-50 border border-slate-300 rounded-xl px-2.5 py-1.5 text-xs font-black text-slate-800 focus:outline-none focus:border-indigo-500 max-w-[200px]"></select>
+            <button onclick="triggerStockDirectCatalyst(true)" class="px-3 py-1.5 bg-rose-600 hover:bg-rose-700 text-white rounded-xl text-xs font-black shadow-xs transition active:scale-95 flex items-center gap-1 cursor-pointer">
+              <i class="fa-solid fa-arrow-trend-up"></i>
+              <span>개별 호재 (+15%)</span>
+            </button>
+            <button onclick="triggerStockDirectCatalyst(false)" class="px-3 py-1.5 bg-blue-600 hover:bg-blue-700 text-white rounded-xl text-xs font-black shadow-xs transition active:scale-95 flex items-center gap-1 cursor-pointer">
+              <i class="fa-solid fa-arrow-trend-down"></i>
+              <span>개별 악재 (-15%)</span>
+            </button>
+          </div>
+        </div>
+
+        <div class="space-y-1 pb-2 border-b border-slate-200 flex-shrink-0">
+          <span class="text-xs font-black text-slate-700">업종/산업군 선택 (소속 기업 전체 일괄 적용):</span>
+          <div id="teacherSectorChips" class="grid grid-cols-4 sm:grid-cols-8 gap-1.5 pt-1"></div>
+        </div>
+
+        <div id="teacherSelectedSectorBanner" class="p-2.5 rounded-xl bg-indigo-50/80 border border-indigo-200 flex items-center justify-between text-xs shadow-2xs flex-shrink-0"></div>
+
+        <div class="space-y-1.5">
+          <div class="flex items-center gap-1.5 text-xs font-black text-rose-700">
+            <i class="fa-solid fa-arrow-trend-up text-rose-600"></i>
+            <span id="labelSectorGood">업종 호재 4종</span>
+          </div>
+          <div id="gridSectorGood" class="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-4 gap-2"></div>
+        </div>
+
+        <div class="space-y-1.5 pt-2 border-t border-slate-200">
+          <div class="flex items-center gap-1.5 text-xs font-black text-blue-700">
+            <i class="fa-solid fa-arrow-trend-down text-blue-600"></i>
+            <span id="labelSectorBad">업종 악재 4종</span>
+          </div>
+          <div id="gridSectorBad" class="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-4 gap-2"></div>
+        </div>
+      </div>
+
+      <!-- 탭 3: 거시경제 20대 쇼크 패널 -->
+      <div id="panelTeacherMacro" class="hidden flex-1 min-h-0 overflow-y-auto space-y-4 p-3 bg-slate-50 rounded-2xl border border-slate-200">
+        <div>
+          <div class="flex items-center justify-between mb-2">
+            <span class="text-xs font-black text-rose-700 flex items-center gap-1.5">
+              <i class="fa-solid fa-arrow-trend-up"></i>
+              <span>거시경제 호재 시나리오 10종</span>
+            </span>
+            <span class="text-[11px] text-slate-500 font-semibold">※ 클릭 시 전체 학생 화면에 즉시 속보 전파</span>
+          </div>
+          <div id="gridGoodShocks" class="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-5 gap-2.5"></div>
+        </div>
+
+        <div class="pt-2 border-t border-slate-200">
+          <div class="flex items-center justify-between mb-2">
+            <span class="text-xs font-black text-blue-700 flex items-center gap-1.5">
+              <i class="fa-solid fa-arrow-trend-down"></i>
+              <span>거시경제 악재 시나리오 10종</span>
+            </span>
+            <span class="text-[11px] text-slate-500 font-semibold">※ 클릭 시 전체 학생 화면에 즉시 속보 전파</span>
+          </div>
+          <div id="gridBadShocks" class="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-5 gap-2.5"></div>
+        </div>
+      </div>
+    </div>
+  </div>
+
+  <!-- 학생 포트폴리오 상세 조회 모달 (교사용) -->
+  <div id="studentDetailModal" class="hidden fixed inset-0 z-[60] flex items-center justify-center p-3 bg-slate-950/70 backdrop-blur-xs">
+    <div class="bg-white rounded-3xl border border-slate-200 shadow-2xl max-w-md w-full p-5 flex flex-col max-h-[85vh]">
+      <div class="flex items-center justify-between pb-3 border-b border-slate-100">
+        <div class="flex items-center gap-2">
+          <div class="w-8 h-8 rounded-xl bg-indigo-600 text-white flex items-center justify-center text-xs font-black">
+            <i class="fa-solid fa-user"></i>
+          </div>
+          <div>
+            <h4 id="modalStudentName" class="text-sm font-black text-slate-900 leading-tight">학생 상세 정보</h4>
+            <span id="modalStudentClass" class="text-[11px] font-bold text-slate-400">3학년 1반 1번</span>
+          </div>
+        </div>
+        <button onclick="closeStudentDetailModal()" class="w-7 h-7 rounded-lg bg-slate-100 hover:bg-slate-200 text-slate-500 flex items-center justify-center cursor-pointer">
+          <i class="fa-solid fa-xmark"></i>
+        </button>
+      </div>
+
+      <div class="my-3 grid grid-cols-3 gap-2 text-center">
+        <div class="p-2 rounded-xl bg-slate-50 border border-slate-200">
+          <div class="text-[10px] text-slate-400 font-bold">보유 현금</div>
+          <div id="modalStudentCash" class="text-xs font-black text-slate-800 num-font mt-0.5">-</div>
+        </div>
+        <div class="p-2 rounded-xl bg-slate-50 border border-slate-200">
+          <div class="text-[10px] text-slate-400 font-bold">총 평가자산</div>
+          <div id="modalStudentAsset" class="text-xs font-black text-slate-800 num-font mt-0.5">-</div>
+        </div>
+        <div class="p-2 rounded-xl bg-slate-50 border border-slate-200">
+          <div class="text-[10px] text-slate-400 font-bold">누적 수익률</div>
+          <div id="modalStudentRate" class="text-xs font-black num-font mt-0.5">-</div>
+        </div>
+      </div>
+
+      <div class="text-xs font-black text-slate-800 mb-1 flex items-center justify-between">
+        <span>보유 종목 내역</span>
+        <span id="modalStudentTradeCount" class="text-[11px] text-slate-500 font-normal">거래 횟수: 0회</span>
+      </div>
+
+      <div id="modalStudentPortfolioList" class="flex-1 min-h-0 overflow-y-auto divide-y divide-slate-100 border border-slate-200 rounded-2xl p-2 bg-slate-50/50">
+        <!-- JS 주입 -->
+      </div>
+
+      <button onclick="closeStudentDetailModal()" class="mt-3 w-full py-2.5 rounded-xl bg-slate-900 hover:bg-slate-800 text-white font-black text-xs cursor-pointer">
+        확인 완료
+      </button>
+    </div>
+  </div>
+
+  <!-- 반별 QR코드 모달 -->
+  <div id="qrModal" class="hidden fixed inset-0 z-[70] flex items-center justify-center p-3 bg-slate-950/80 backdrop-blur-sm">
+    <div class="bg-white rounded-3xl border border-slate-200 shadow-2xl max-w-lg w-full p-5 text-center flex flex-col items-center gap-3">
+      <div class="flex items-center justify-between w-full pb-2 border-b border-slate-100">
+        <div class="flex items-center gap-2">
+          <div class="w-8 h-8 rounded-xl bg-indigo-600 text-white flex items-center justify-center text-sm font-black shadow-md">
+            <i class="fa-solid fa-qrcode"></i>
+          </div>
+          <div>
+            <h3 class="text-base font-black text-slate-900 tracking-tight text-left">반별 QR코드 입장</h3>
+            <p class="text-[11px] text-slate-400 font-medium text-left">학생들이 스마트폰 카메라로 QR코드를 비추면 즉시 접속됩니다.</p>
+          </div>
+        </div>
+        <button onclick="toggleQRModal(false)" class="text-slate-400 hover:text-slate-600 text-sm cursor-pointer">
+          <i class="fa-solid fa-xmark"></i>
+        </button>
+      </div>
+
+      <!-- 접속 주소 프리셋 선택 -->
+      <div class="w-full bg-indigo-50/70 p-2.5 rounded-2xl border border-indigo-100 flex items-center justify-between gap-2 flex-wrap text-left">
+        <div>
+          <div class="text-xs font-black text-indigo-950">QR 연결 대상 주소 모드:</div>
+          <div class="text-[10px] text-indigo-600 font-medium">학생들이 접속할 웹 주소 기준을 선택합니다.</div>
+        </div>
+        <div class="flex items-center gap-1">
+          <button type="button" id="btnQrUrlModeCurrent" onclick="setQrUrlMode('current')" class="px-2.5 py-1 rounded-lg text-xs font-black transition cursor-pointer bg-indigo-600 text-white shadow-xs">
+            현재 열린 주소 (기본)
+          </button>
+          <button type="button" id="btnQrUrlModeGithub" onclick="setQrUrlMode('github')" class="px-2.5 py-1 rounded-lg text-xs font-black transition cursor-pointer bg-white text-slate-700 border border-slate-200">
+            깃허브 배포 주소
+          </button>
+        </div>
+      </div>
+
+      <!-- 학급(반) 선택 버튼군 -->
+      <div class="w-full bg-slate-50 p-2.5 rounded-2xl border border-slate-200">
+        <div class="text-xs font-black text-slate-700 mb-1.5 text-left">학급(반) 선택 (해당 반 전용 채널로 자동 분리):</div>
+        <div class="flex flex-wrap gap-1.5" id="qrClassPills"></div>
+      </div>
+
+      <!-- QR 코드 렌더링 박스 -->
+      <div class="p-3 bg-white rounded-2xl border-2 border-indigo-200 shadow-inner flex flex-col items-center w-full">
+        <div id="qrTargetClassLabel" class="px-3 py-1 rounded-full bg-indigo-50 border border-indigo-200 text-xs font-black text-indigo-800 mb-2">
+          KRX 모의주식 [1반] 입장 QR
+        </div>
+        <div id="qrcodeCanvasContainer" class="p-2 bg-white rounded-xl shadow-xs min-h-[220px] flex items-center justify-center"></div>
+        <span class="mt-2 text-xs font-bold text-slate-500">기본 카메라 앱 또는 네이버 앱으로 비추면 바로 열립니다</span>
+
+        <div class="mt-2.5 w-full bg-slate-50 p-2 rounded-xl border border-slate-200 flex items-center justify-between gap-2 text-left">
+          <span id="qrFullUrlText" class="text-[11px] font-mono font-bold text-indigo-700 truncate select-all"></span>
+          <button onclick="copyQRUrl()" class="px-2.5 py-1 bg-white hover:bg-slate-100 border border-slate-300 rounded-lg text-xs font-black text-slate-700 flex-shrink-0 cursor-pointer shadow-2xs">
+            <i class="fa-regular fa-copy mr-1"></i>주소 복사
+          </button>
+        </div>
+      </div>
+
+      <button onclick="toggleQRModal(false)" class="w-full py-2.5 rounded-xl bg-slate-900 hover:bg-slate-800 text-white font-black text-xs transition cursor-pointer">
+        창 닫기
+      </button>
+    </div>
+  </div>
+
+  <!-- 실시간 전체 뉴스 속보 아카이브 모달 (히스토리 모아보기) -->
+  <div id="newsHistoryModal" class="hidden fixed inset-0 z-[82] flex items-center justify-center p-3 bg-slate-950/80 backdrop-blur-sm">
+    <div class="bg-white rounded-3xl border border-slate-200 shadow-2xl max-w-2xl w-full p-4 md:p-5 flex flex-col max-h-[90vh] overflow-hidden animate-in fade-in zoom-in-95 duration-150">
+      <!-- 모달 상단 헤더 -->
+      <div class="flex items-center justify-between pb-3 border-b border-slate-100 flex-shrink-0">
+        <div class="flex items-center gap-2.5">
+          <div class="w-9 h-9 rounded-2xl bg-gradient-to-tr from-rose-600 to-indigo-600 text-white flex items-center justify-center text-sm font-black shadow-md">
+            <i class="fa-solid fa-newspaper"></i>
+          </div>
+          <div>
+            <div class="flex items-center gap-2">
+              <h3 class="text-base font-black text-slate-900 tracking-tight">실시간 뉴스 속보 아카이브</h3>
+              <span id="newsHistoryTotalBadge" class="px-2 py-0.5 rounded-full text-[11px] font-black bg-indigo-50 text-indigo-700 border border-indigo-200">총 0건</span>
+            </div>
+            <p class="text-[11px] text-slate-500 font-medium">정규장 중 실시간으로 발생한 모든 종목의 호재·악재 뉴스를 한곳에서 모아봅니다.</p>
+          </div>
+        </div>
+        <button onclick="closeNewsHistoryModal()" class="w-8 h-8 rounded-xl bg-slate-100 hover:bg-slate-200 text-slate-500 flex items-center justify-center cursor-pointer transition">
+          <i class="fa-solid fa-xmark"></i>
+        </button>
+      </div>
+
+      <!-- 필터 & 검색 바 -->
+      <div class="my-2.5 flex flex-col sm:flex-row gap-2 items-center justify-between flex-shrink-0">
+        <div class="flex items-center gap-1 w-full sm:w-auto overflow-x-auto no-scrollbar">
+          <button id="btnFilterNewsAll" onclick="setNewsFilter('ALL')" class="px-3 py-1.5 rounded-xl text-xs font-black transition cursor-pointer bg-indigo-600 text-white shadow-2xs">
+            전체 보기 (<span id="filterCountAll">0</span>)
+          </button>
+          <button id="btnFilterNewsGood" onclick="setNewsFilter('GOOD')" class="px-3 py-1.5 rounded-xl text-xs font-black transition cursor-pointer bg-slate-100 text-slate-700 hover:bg-rose-50 hover:text-rose-700">
+            호재 기사 ▲ (<span id="filterCountGood">0</span>)
+          </button>
+          <button id="btnFilterNewsBad" onclick="setNewsFilter('BAD')" class="px-3 py-1.5 rounded-xl text-xs font-black transition cursor-pointer bg-slate-100 text-slate-700 hover:bg-blue-50 hover:text-blue-700">
+            악재 기사 ▼ (<span id="filterCountBad">0</span>)
+          </button>
+        </div>
+        <div class="relative w-full sm:w-56">
+          <i class="fa-solid fa-magnifying-glass absolute left-3 top-2.5 text-slate-400 text-xs"></i>
+          <input id="newsHistorySearchInput" oninput="handleNewsHistorySearch(this.value)" type="text" placeholder="종목명 또는 기사 검색..." class="w-full pl-8 pr-3 py-1.5 bg-slate-50 border border-slate-200 rounded-xl text-xs font-semibold focus:outline-none focus:border-indigo-500 focus:bg-white transition">
+        </div>
+      </div>
+
+      <!-- 뉴스 기사 타임라인 피드 리스트 -->
+      <div id="newsHistoryListContainer" class="flex-1 min-h-0 overflow-y-auto divide-y divide-slate-100 pr-1 space-y-1">
+        <!-- JS 동적 렌더링 -->
+      </div>
+
+      <!-- 하단 닫기 -->
+      <div class="pt-3 border-t border-slate-100 flex items-center justify-between text-xs text-slate-400 flex-shrink-0">
+        <span>💡 뉴스를 클릭하면 신문 1면 전문 형식의 상세 기사를 열람할 수 있습니다.</span>
+        <button onclick="closeNewsHistoryModal()" class="px-4 py-2 rounded-xl bg-slate-900 hover:bg-slate-800 text-white font-black transition cursor-pointer">
+          닫기
+        </button>
+      </div>
+    </div>
+  </div>
+
+  <!-- 뉴스 전체 기사 전문 모달 -->
+  <div id="articleDetailModal" class="hidden fixed inset-0 z-[85] flex items-center justify-center p-3 bg-slate-950/80 backdrop-blur-sm">
+    <div class="bg-white rounded-3xl border border-slate-200 shadow-2xl max-w-xl w-full p-5 flex flex-col max-h-[90vh] overflow-hidden">
+      <!-- 기사 상단 헤더 -->
+      <div class="flex items-center justify-between pb-3 border-b border-slate-100 flex-shrink-0">
+        <div class="flex items-center gap-2">
+          <button onclick="backToNewsHistoryModal()" id="btnBackToNewsList" class="px-2 py-1 rounded-lg bg-slate-100 hover:bg-slate-200 text-slate-700 font-black text-xs flex items-center gap-1 cursor-pointer transition mr-1" title="전체 뉴스 목록으로 돌아가기">
+            <i class="fa-solid fa-arrow-left"></i>
+            <span>뉴스 목록</span>
+          </button>
+          <div id="articleMediaBadge" class="px-2.5 py-1 rounded-lg text-xs font-black bg-indigo-50 text-indigo-700 border border-indigo-200">
+            KRX 경제일보
+          </div>
+          <span id="articleDateText" class="text-xs text-slate-400 font-mono">2026.09.29 14:32</span>
+          <span id="articleTypeBadge" class="px-2 py-0.5 rounded text-[10px] font-black bg-rose-100 text-rose-700">단독·호재</span>
+        </div>
+        <button onclick="closeArticleModal()" class="w-7 h-7 rounded-lg bg-slate-100 hover:bg-slate-200 text-slate-500 flex items-center justify-center cursor-pointer transition">
+          <i class="fa-solid fa-xmark"></i>
+        </button>
+      </div>
+
+      <!-- 기사 제목 & 관련 종목 바 -->
+      <div class="py-3 flex-shrink-0">
+        <h3 id="articleModalTitle" class="text-base md:text-lg font-black text-slate-900 leading-snug tracking-tight"></h3>
+        <div class="mt-2.5 flex items-center justify-between p-2 rounded-xl bg-slate-50 border border-slate-200">
+          <div class="flex items-center gap-2">
+            <span id="articleStockIcon" class="text-lg">📱</span>
+            <div>
+              <span id="articleStockName" class="font-black text-xs text-slate-900">삼성전자</span>
+              <span id="articleStockCode" class="text-[10px] font-mono text-slate-400">005930</span>
+            </div>
+          </div>
+          <div class="text-right">
+            <div id="articleStockPrice" class="text-xs font-black num-font text-slate-800">284,000원</div>
+            <div id="articleStockRate" class="text-[10px] font-bold num-font text-rose-600">+2.71%</div>
+          </div>
+        </div>
+      </div>
+
+      <!-- 기사 본문 영역 -->
+      <div class="flex-1 min-h-0 overflow-y-auto space-y-3 pr-1 text-slate-700 leading-relaxed text-xs">
+        <div id="articleModalBody" class="space-y-2.5 text-xs font-medium"></div>
+
+        <!-- 애널리스트/시장 분석 박스 -->
+        <div class="p-3 rounded-2xl bg-indigo-50/70 border border-indigo-100 space-y-1">
+          <div class="flex items-center gap-1.5 text-xs font-black text-indigo-950">
+            <i class="fa-solid fa-chart-pie text-indigo-600"></i>
+            <span>증권사 시장 애널리스트 코멘트</span>
+          </div>
+          <p id="articleAnalystComment" class="text-[11px] text-slate-600 font-medium leading-relaxed"></p>
+        </div>
+      </div>
+
+      <!-- 하단 버튼 -->
+      <div class="pt-3 border-t border-slate-100 flex items-center justify-between gap-2 flex-shrink-0">
+        <button onclick="goToStockAndTrade()" class="flex-1 py-2.5 rounded-xl bg-indigo-600 hover:bg-indigo-700 text-white font-black text-xs shadow-md transition active:scale-95 flex items-center justify-center gap-1.5 cursor-pointer">
+          <i class="fa-solid fa-bolt text-amber-300"></i>
+          <span>이 종목 주문창으로 이동</span>
+        </button>
+        <button onclick="closeArticleModal()" class="px-4 py-2.5 rounded-xl bg-slate-100 hover:bg-slate-200 text-slate-700 font-black text-xs transition cursor-pointer">
+          닫기
+        </button>
+      </div>
+    </div>
+  </div>
+
+  <!-- 실시간 새 뉴스 팝업 알림 (플로팅 카드) -->
+  <div id="newsToastPopup" class="hidden fixed top-14 right-4 z-[95] max-w-sm w-full bg-white/95 backdrop-blur-md rounded-2xl border-2 border-indigo-500 shadow-2xl p-3.5 transform transition-all duration-300 cursor-pointer hover:bg-indigo-50/40" onclick="handleNewsPopupClick()">
+    <div class="flex items-start justify-between gap-2">
+      <div class="flex items-center gap-2">
+        <span class="flex h-2.5 w-2.5 relative">
+          <span class="animate-ping absolute inline-flex h-full w-full rounded-full bg-rose-400 opacity-75"></span>
+          <span class="relative inline-flex rounded-full h-2.5 w-2.5 bg-rose-600"></span>
+        </span>
+        <span class="text-[10px] font-black tracking-wider text-rose-600 bg-rose-50 px-1.5 py-0.5 rounded border border-rose-200 uppercase">BREAKING NEWS</span>
+        <span id="popupStockBadge" class="text-xs font-black text-slate-900 bg-slate-100 px-2 py-0.5 rounded-full">삼성전자</span>
+      </div>
+      <button onclick="event.stopPropagation(); closeNewsToastPopup()" class="text-slate-400 hover:text-slate-600 text-xs p-1">
+        <i class="fa-solid fa-xmark"></i>
+      </button>
+    </div>
+    <div class="mt-2">
+      <h4 id="popupNewsTitle" class="text-xs font-black text-slate-900 line-clamp-1 leading-snug"></h4>
+      <p id="popupNewsSummary" class="text-[11px] text-slate-600 line-clamp-2 mt-1 leading-normal font-medium"></p>
+    </div>
+    <div class="mt-2 pt-2 border-t border-slate-100 flex items-center justify-between text-[10px] text-indigo-600 font-bold">
+      <span>터치하면 전체 기사 전문을 읽습니다</span>
+      <i class="fa-solid fa-chevron-right text-[9px]"></i>
+    </div>
+  </div>
+
+  <!-- 긴급 속보 모달 -->
+  <div id="breakingModal" class="hidden fixed inset-0 z-[80] flex items-center justify-center p-3 bg-slate-950/80 backdrop-blur-md">
+    <div id="breakingCard" class="bg-white rounded-2xl border-2 border-rose-500 shadow-2xl max-w-lg w-full p-5 text-left flex flex-col gap-3">
+      <div class="flex items-center justify-between pb-2 border-b border-slate-100">
+        <div class="flex items-center gap-2.5">
+          <div id="breakingIcon" class="w-9 h-9 rounded-xl bg-rose-600 text-white flex items-center justify-center text-sm font-black shadow-md animate-pulse">
+            <i class="fa-solid fa-bolt"></i>
+          </div>
+          <div>
+            <div class="flex items-center gap-2">
+              <span class="text-xs font-black tracking-tight text-slate-900">KRX 긴급 마켓 속보</span>
+              <span id="breakingBadge" class="px-2 py-0.5 rounded text-[10px] font-black bg-rose-100 text-rose-700 border border-rose-200">호재 ▲</span>
+            </div>
+          </div>
+        </div>
+        <button onclick="closeBreakingModal()" class="text-slate-400 hover:text-slate-600 text-xs cursor-pointer">
+          <i class="fa-solid fa-xmark"></i>
+        </button>
+      </div>
+      <div>
+        <h3 id="breakingTitle" class="text-base md:text-lg font-black text-slate-900 leading-snug tracking-tight"></h3>
+      </div>
+      <div class="bg-slate-50 p-3 rounded-xl border border-slate-200 text-slate-700 space-y-1.5">
+        <p id="breakingContent" class="text-xs font-medium leading-relaxed text-slate-800"></p>
+        <p id="breakingSummary" class="text-[11px] text-slate-500 leading-normal pt-1 border-t border-slate-200"></p>
+      </div>
+      <div class="pt-2 border-t border-slate-100 flex items-center justify-between">
+        <span id="breakingTimerText" class="text-xs font-mono text-slate-400">12초 후 자동으로 닫힙니다</span>
+        <button onclick="closeBreakingModal()" class="px-4 py-2 rounded-xl bg-slate-900 hover:bg-slate-800 text-white font-black text-xs transition cursor-pointer">
+          기사 확인 완료
+        </button>
+      </div>
+    </div>
+  </div>
+
+  <!-- 정규장 거래 마감 팝업 모달 -->
+  <div id="marketClosedModal" class="hidden fixed inset-0 z-[100] flex items-center justify-center p-4 bg-slate-950/85 backdrop-blur-md">
+    <div class="bg-white rounded-3xl border border-slate-200 shadow-2xl max-w-md w-full p-6 text-center flex flex-col items-center animate-in fade-in zoom-in-95 duration-200">
+      <div class="w-16 h-16 rounded-3xl bg-gradient-to-tr from-amber-500 to-rose-600 text-white flex items-center justify-center text-2xl font-black shadow-lg mb-3">
+        <i class="fa-solid fa-flag-checkered"></i>
+      </div>
+      <div class="px-3 py-1 rounded-full bg-amber-50 border border-amber-200 text-amber-800 text-[11px] font-black mb-1.5">
+        KRX 정규장 운영 마감
+      </div>
+      <h3 class="text-xl font-black text-slate-900 tracking-tight">오늘의 정규장이 마감되었습니다!</h3>
+      <p class="text-xs text-slate-500 font-medium mt-1 mb-4">
+        장 마감 시점의 최종 투자 수익률과 자산 평가 결과입니다.
+      </p>
+
+      <!-- 최종 결과 요약 박스 -->
+      <div class="w-full bg-slate-50 border border-slate-200 rounded-2xl p-4 space-y-3 mb-4 text-left">
+        <div class="flex items-center justify-between pb-2 border-b border-slate-200">
+          <span class="text-xs font-bold text-slate-500">투자자</span>
+          <span id="closedModalStudentName" class="text-xs font-black text-slate-900">학생</span>
+        </div>
+        <div class="flex items-center justify-between">
+          <span class="text-xs font-bold text-slate-500">초기 투자금 (원금)</span>
+          <span id="closedModalSeed" class="text-xs font-mono font-bold text-slate-700 num-font">10,000,000원</span>
+        </div>
+        <div class="flex items-center justify-between">
+          <span class="text-xs font-bold text-slate-500">최종 총 평가자산</span>
+          <span id="closedModalTotalAsset" class="text-sm font-mono font-black text-slate-900 num-font">10,000,000원</span>
+        </div>
+        <div class="flex items-center justify-between pt-2 border-t border-slate-200">
+          <span class="text-xs font-black text-slate-700">최종 누적 수익률</span>
+          <span id="closedModalProfitRate" class="text-base font-mono font-black text-rose-600 num-font">+0.00%</span>
+        </div>
+        <div class="flex items-center justify-between text-[11px] text-slate-400">
+          <span>총 체결 거래 횟수</span>
+          <span id="closedModalTrades" class="font-bold text-slate-600">0회</span>
+        </div>
+      </div>
+
+      <button onclick="closeMarketClosedModal()" class="w-full py-3 bg-slate-900 hover:bg-slate-800 text-white rounded-xl font-black text-xs shadow-md transition active:scale-95 flex items-center justify-center gap-1.5 cursor-pointer">
+        <i class="fa-solid fa-check"></i>
+        <span>결과 확인 및 대기</span>
+      </button>
+    </div>
+  </div>
+
+  <!-- 토스트 알림 컨테이너 -->
+  <div id="toastContainer" class="fixed bottom-4 right-4 z-[90] flex flex-col gap-2 max-w-sm pointer-events-none"></div>
+
+  <script>
+    // 100대 대표 종목 데이터베이스
+    const RAW_STOCKS = [
+      {"id":"003230","name":"삼양식품","cat":"식품/외식","icon":"🍜","base":1215000,"desc":"전 세계를 뒤흔든 '불닭볶음면' 수출 잭팟으로 120만 원대를 돌파한 K-푸드 1등 수출 기업입니다."},
+      {"id":"004370","name":"농심","cat":"식품/외식","icon":"🍜","base":392500,"desc":"국민 라면 신라면, 새우깡, 짜파게티를 만드는 대한민국 1등 전통 라면 제조사입니다."},
+      {"id":"007310","name":"오뚜기","cat":"식품/외식","icon":"🍛","base":412000,"desc":"진라면, 3분 카레, 케첩, 마요네즈로 온 국민 식탁을 책임지는 착한 종합 식품기업입니다."},
+      {"id":"097950","name":"CJ제일제당","cat":"식품/외식","icon":"🥟","base":315000,"desc":"비비고 만두, 햇반, 스팸으로 세계 K-푸드 문화를 선도하는 국내 최대 식품 기업입니다."},
+      {"id":"271560","name":"오리온","cat":"식품/외식","icon":"🥧","base":102000,"desc":"초코파이 정(情), 포카칩, 꼬북칩으로 중국과 베트남, 러시아를 사로잡은 글로벌 제과사입니다."},
+      {"id":"005180","name":"빙그레","cat":"식품/외식","icon":"🍦","base":81500,"desc":"바나나맛우유, 붕어싸만코, 메로나로 오랜 사랑을 받는 유제품 및 빙과 1등 기업입니다."},
+      {"id":"000080","name":"하이트진로","cat":"식품/외식","icon":"🍺","base":21800,"desc":"참이슬과 테라, 켈리로 국내 주류 시장을 이끄는 100년 전통의 음료 기업입니다."},
+      {"id":"280360","name":"롯데웰푸드","cat":"식품/외식","icon":"🍫","base":148000,"desc":"빼빼로, 설레임, 월드콘, 꼬깔콘 등을 생산하는 롯데그룹의 대표 종합 제과사입니다."},
+      {"id":"001680","name":"대상","cat":"식품/외식","icon":"🥢","base":23400,"desc":"종가집 김치와 청정원 고추장, 장류로 전 세계에 발효 식품의 맛을 전파하는 기업입니다."},
+      {"id":"005610","name":"SPC삼립","cat":"식품/외식","icon":"🍞","base":58000,"desc":"포켓몬빵 열풍의 주인공이자 파리바게뜨 빵을 공급하는 대한민국 베이커리 1위입니다."},
+      {"id":"049770","name":"동원F&B","cat":"식품/외식","icon":"🐟","base":37200,"desc":"동원참치와 양반김, 쿨피스 등 영양 만점 수산·식품을 제조하는 해양 종합 식품사입니다."},
+      {"id":"267980","name":"매일유업","cat":"식품/외식","icon":"🥛","base":42500,"desc":"아몬드브리즈, 상하목장 유기농 우유를 만드는 혁신 유제품 전문 기업입니다."},
+      {"id":"005930","name":"삼성전자","cat":"IT/반도체","icon":"📱","base":284000,"desc":"갤럭시 스마트폰, DRAM, 초고성능 HBM 메모리를 만드는 한국 시가총액 1위 대표 기업입니다."},
+      {"id":"000660","name":"SK하이닉스","cat":"IT/반도체","icon":"💾","base":1848000,"desc":"AI 시대를 이끄는 엔비디아의 핵심 파트너이자 180만 원대 황제주에 등극한 HBM 세계 1위 제조사입니다."},
+      {"id":"035420","name":"NAVER","cat":"IT/반도체","icon":"🟢","base":195100,"desc":"국내 1위 포털 검색엔진과 라인(LINE), 치지직, 웹툰을 운영하는 국가대표 IT 플랫폼입니다."},
+      {"id":"035720","name":"카카오","cat":"IT/반도체","icon":"🟡","base":33750,"desc":"국민 메신저 카카오톡과 모빌리티, 콘텐츠, 금융을 융합한 모바일 라이프 플랫폼입니다."},
+      {"id":"066570","name":"LG전자","cat":"IT/반도체","icon":"📺","base":112000,"desc":"올레드 TV, 공간 인테리어 가전 오브제, 자동차 전장 부품을 만드는 글로벌 전자기업입니다."},
+      {"id":"009150","name":"삼성전기","cat":"IT/반도체","icon":"🔌","base":165000,"desc":"스마트폰과 전기차에 수만 개씩 들어가는 초소형 전자 부품 MLCC의 세계 강자입니다."},
+      {"id":"042700","name":"한미반도체","cat":"IT/반도체","icon":"⚙️","base":242000,"desc":"AI HBM 반도체 생산에 반드시 필요한 듀얼 TC 본더 장비 글로벌 1위 기업입니다."},
+      {"id":"058470","name":"리노공업","cat":"IT/반도체","icon":"🔬","base":218000,"desc":"반도체 칩이 잘 동작하는지 검사하는 초미세 리노핀과 소켓 기술의 독보적 강자입니다."},
+      {"id":"000990","name":"DB하이텍","cat":"IT/반도체","icon":"💡","base":48500,"desc":"전력반도체와 이미지 센서를 전문적으로 위탁 생산하는 8인치 파운드리 선두주자입니다."},
+      {"id":"377300","name":"카카오페이","cat":"IT/반도체","icon":"💳","base":29500,"desc":"스마트폰 터치 한 번으로 송금, 간편결제, 금융 투자를 연결하는 대표 핀테크사입니다."},
+      {"id":"053800","name":"안랩","cat":"IT/반도체","icon":"🛡️","base":62500,"desc":"국민 백신 V3를 개발하여 대한민국의 컴퓨터와 모바일 보안을 지켜온 정보보안사입니다."},
+      {"id":"039030","name":"이오테크닉스","cat":"IT/반도체","icon":"✨","base":192000,"desc":"초정밀 레이저로 반도체 칩에 글자를 새기고 웨이퍼를 가공하는 레이저 장비 1위입니다."},
+      {"id":"357780","name":"솔브레인","cat":"IT/반도체","icon":"🧪","base":275000,"desc":"반도체와 디스플레이 미세 공정에 들어가는 고순도 화학 공정 소재를 공급합니다."},
+      {"id":"240810","name":"원익IPS","cat":"IT/반도체","icon":"🏗️","base":33500,"desc":"반도체 웨이퍼 표면에 얇은 막을 고르게 입히는 증착 공정 장비의 핵심 국산화 기업입니다."},
+      {"id":"259960","name":"크래프톤","cat":"게임/엔터","icon":"🪂","base":197700,"desc":"전 세계 수억 명이 즐기는 메가 히트 배틀로얄 게임 '배틀그라운드'의 개발사입니다."},
+      {"id":"036570","name":"엔씨소프트","cat":"게임/엔터","icon":"⚔️","base":218000,"desc":"리니지 시리즈, 블레이드 & 소울로 한국 MMORPG의 대중화를 이끈 게임 명가입니다."},
+      {"id":"251270","name":"넷마블","cat":"게임/엔터","icon":"🎮","base":63500,"desc":"세븐나이츠, 나 혼자만 레벨업 등 글로벌 인기 IP 모바일 게임을 서비스하는 기업입니다."},
+      {"id":"263750","name":"펄어비스","cat":"게임/엔터","icon":"🐎","base":39800,"desc":"자체 게임 엔진 기술력을 바탕으로 '검은사막', '붉은사막'을 개발하는 오픈월드 명가입니다."},
+      {"id":"293490","name":"카카오게임즈","cat":"게임/엔터","icon":"🏹","base":19800,"desc":"오딘: 발할라 라이징, 우마무스메를 성공시킨 모바일·PC 게임 퍼블리셔입니다."},
+      {"id":"225570","name":"넥슨게임즈","cat":"게임/엔터","icon":"🔫","base":17200,"desc":"블루 아카이브와 루트슈터 퍼스트 디센던트로 글로벌 팬덤을 형성한 개발사입니다."},
+      {"id":"112040","name":"위메이드","cat":"게임/엔터","icon":"🐉","base":40500,"desc":"미르의 전설 IP와 게임 블록체인 생태계를 결합한 선구적 게임 개발사입니다."},
+      {"id":"352820","name":"하이브","cat":"게임/엔터","icon":"🎤","base":155500,"desc":"BTS, 세븐틴, 투모로우바이투게더, 뉴진스를 보유한 세계 최대 K-POP 레이블입니다."},
+      {"id":"035900","name":"JYP Ent.","cat":"게임/엔터","icon":"💃","base":58200,"desc":"트와이스, 스트레이 키즈, ITZY, NMIXX를 배출한 탄탄한 시스템의 K-POP 엔터사입니다."},
+      {"id":"041510","name":"에스엠","cat":"게임/엔터","icon":"🎵","base":81500,"desc":"에스파, NCT, 라이즈를 통해 독창적인 광야 세계관을 선보이는 대한민국 1호 엔터사입니다."},
+      {"id":"122870","name":"와이지엔터","cat":"게임/엔터","icon":"🎧","base":42800,"desc":"블랙핑크, 베이비몬스터, 트레저가 소속된 글로벌 힙합 트렌드 리더 엔터사입니다."},
+      {"id":"035760","name":"CJ ENM","cat":"게임/엔터","icon":"🎬","base":78000,"desc":"tvN 방송 채널, 영화 기생충 제작, KCON을 주최하는 종합 엔터테인먼트 기업입니다."},
+      {"id":"253450","name":"스튜디오드래곤","cat":"게임/엔터","icon":"📺","base":43500,"desc":"눈물의 여왕, 더 글로리, 사랑의 불시착을 탄생시킨 아시아 최대 드라마 스튜디오입니다."},
+      {"id":"005380","name":"현대차","cat":"모빌리티","icon":"🚗","base":353000,"desc":"아이오닉 전기차와 프리미엄 제네시스로 글로벌 자동차 판매 3위에 오른 대표 기업입니다."},
+      {"id":"000270","name":"기아","cat":"모빌리티","icon":"🚙","base":115400,"desc":"EV3, 카니발, 쏘렌토 등 감각적인 디자인과 전동화 전략으로 최고 수익성을 냅니다."},
+      {"id":"012330","name":"현대모비스","cat":"모빌리티","icon":"⚙️","base":245000,"desc":"자율주행 센서, 첨단 제동 및 조향 장치 등 미래 모빌리티 핵심 부품을 만듭니다."},
+      {"id":"086280","name":"현대글로비스","cat":"모빌리티","icon":"🚢","base":128000,"desc":"대형 자동차 운반선으로 전 세계 바다를 누비며 완성차 해상 운송을 담당합니다."},
+      {"id":"003490","name":"대한항공","cat":"모빌리티","icon":"✈️","base":31500,"desc":"오대양 육대주를 연결하는 대한민국 1위 국적 항공사이자 글로벌 항공 화물 강자입니다."},
+      {"id":"020560","name":"아시아나항공","cat":"모빌리티","icon":"🛫","base":10800,"desc":"미주, 유럽 노선과 고품격 기내 서비스를 제공하는 한국의 2대 대형 항공사입니다."},
+      {"id":"089590","name":"제주항공","cat":"모빌리티","icon":"🍊","base":10200,"desc":"제주 및 일본, 동남아를 합리적인 가격에 연결하는 대한민국 1등 저비용항공사입니다."},
+      {"id":"091810","name":"티웨이항공","cat":"모빌리티","icon":"🛩️","base":2850,"desc":"유럽 크로아티아, 파리 노선까지 취항을 확대한 초고속 성장 실속형 항공사입니다."},
+      {"id":"011200","name":"HMM","cat":"모빌리티","icon":"⚓","base":19200,"desc":"초대형 컨테이너선으로 세계 무역의 대동맥을 잇는 한국 최대 국적 해운 선사입니다."},
+      {"id":"028670","name":"팬오션","cat":"모빌리티","icon":"🚢","base":3900,"desc":"철광석, 석탄, 곡물 등 부피가 큰 핵심 원자재를 대규모로 나르는 벌크선 전문사입니다."},
+      {"id":"204320","name":"HL만도","cat":"모빌리티","icon":"🛑","base":41000,"desc":"전기차와 자율주행 차량의 전자식 브레이크 및 첨단 조향 장치를 생산합니다."},
+      {"id":"018880","name":"한온시스템","cat":"모빌리티","icon":"❄️","base":4250,"desc":"전기차 배터리가 과열되지 않도록 정밀 제어하는 친환경 열관리 시스템 전문사입니다."},
+      {"id":"161390","name":"한국타이어","cat":"모빌리티","icon":"🛞","base":51500,"desc":"포르쉐, BMW와 전기차 전용 타이어 '아이온(iON)'을 공급하는 글로벌 톱티어 타이어사입니다."},
+      {"id":"090430","name":"아모레퍼시픽","cat":"뷰티/유통","icon":"💄","base":152000,"desc":"설화수, 라네즈, 이니스프리로 글로벌 K-뷰티 열풍을 주도하는 1위 화장품사입니다."},
+      {"id":"051900","name":"LG생활건강","cat":"뷰티/유통","icon":"🧴","base":368000,"desc":"더 히스토리 오브 후, 페리오 치약, 코카콜라 음료를 만드는 생활문화 대기업입니다."},
+      {"id":"192820","name":"코스맥스","cat":"뷰티/유통","icon":"🧪","base":153000,"desc":"세계 유명 화장품 브랜드의 쿠션과 립스틱을 직접 연구 개발해 생산하는 1등 ODM사입니다."},
+      {"id":"161890","name":"한국콜마","cat":"뷰티/유통","icon":"☀️","base":72000,"desc":"올리브영 인기 선크림과 기초 화장품의 핵심 원천 제형 기술을 보유한 연구 제조사입니다."},
+      {"id":"028260","name":"삼성물산","cat":"뷰티/유통","icon":"🏛️","base":148000,"desc":"에버랜드 놀이공원, 빈폴 패션, 초고층 빌딩 부르즈 할리파를 지은 종합 그룹사입니다."},
+      {"id":"282330","name":"BGF리테일","cat":"뷰티/유통","icon":"🏪","base":126000,"desc":"연세우유 크림빵과 디저트 열풍을 이끄는 대한민국 1위 편의점 'CU' 운영사입니다."},
+      {"id":"007070","name":"GS리테일","cat":"뷰티/유통","icon":"🏪","base":21200,"desc":"혜자로운 도시락과 편의점 택배로 친숙한 생활 밀착형 플랫폼 'GS25' 운영사입니다."},
+      {"id":"139480","name":"이마트","cat":"뷰티/유통","icon":"🛒","base":63500,"desc":"가성비 노브랜드, 트레이더스, 스타벅스 코리아를 운영하는 대형 할인마트 선두사입니다."},
+      {"id":"004170","name":"신세계","cat":"뷰티/유통","icon":"🛍️","base":158000,"desc":"강남점 백화점과 센텀시티에서 최고급 명품 쇼핑 문화를 선도하는 럭셔리 유통사입니다."},
+      {"id":"069960","name":"현대백화점","cat":"뷰티/유통","icon":"🏬","base":51000,"desc":"더현대 서울을 통해 MZ세대의 핫플레이스 팝업스토어 성지로 떠오른 복합 쇼핑사입니다."},
+      {"id":"383220","name":"F&F","cat":"뷰티/유통","icon":"🧢","base":66500,"desc":"청소년들이 좋아하는 MLB 볼캡과 디스커버리 롱패딩을 히트시킨 패션 1위 기업입니다."},
+      {"id":"008770","name":"호텔신라","cat":"뷰티/유통","icon":"🏨","base":54800,"desc":"인천공항과 아시아 주요 공항에서 명품 면세점을 운영하는 글로벌 면세·호텔 기업입니다."},
+      {"id":"081660","name":"휠라홀딩스","cat":"뷰티/유통","icon":"👟","base":40500,"desc":"디스럽터 운동화와 글로벌 최고급 골프 브랜드 타이틀리스트를 보유한 스포츠사입니다."},
+      {"id":"207940","name":"삼성바이오","cat":"바이오","icon":"🧬","base":1366000,"desc":"세계 최대 규모 첨단 시설에서 글로벌 항암 바이오 의약품을 위탁 제조하는 바이오 대장주입니다."},
+      {"id":"068270","name":"셀트리온","cat":"바이오","icon":"🔬","base":177000,"desc":"자가면역질환 치료제 램시마와 바이오시밀러로 전 세계 시장을 개척한 바이오사입니다."},
+      {"id":"000100","name":"유한양행","cat":"바이오","icon":"💊","base":74000,"desc":"국산 폐암 혁신 신약 '렉라자'의 미국 FDA 품목허가를 획득한 신약 명가입니다."},
+      {"id":"128940","name":"한미약품","cat":"바이오","icon":"🧪","base":324000,"desc":"독자 제형 기술로 차세대 비만 치료제와 대사질환 신약을 개발하는 R&D 제약사입니다."},
+      {"id":"069620","name":"대웅제약","cat":"바이오","icon":"🐻","base":147000,"desc":"간 기능 개선제 우루사와 미국에 수출하는 보톡스 나보타를 개발한 제약사입니다."},
+      {"id":"185750","name":"종근당","cat":"바이오","icon":"💊","base":119000,"desc":"펜잘과 락토핏 생유산균으로 건강기능식품 및 만성질환 치료제를 선도합니다."},
+      {"id":"006280","name":"녹십자","cat":"바이오","icon":"🩸","base":138000,"desc":"독감 백신, 수두 백신과 필수 혈액제제를 개발해 WHO에 수출하는 백신 전문사입니다."},
+      {"id":"326030","name":"SK바이오팜","cat":"바이오","icon":"🧠","base":108000,"desc":"뇌전증 치료 신약 엑스코프리를 개발해 미국 시장에 직접 판매하는 신약 바이오사입니다."},
+      {"id":"028300","name":"HLB","cat":"바이오","icon":"🎗️","base":86500,"desc":"암세포 신생혈관을 억제하는 표적항암제 리보세라닙을 개발하는 바이오 기업입니다."},
+      {"id":"196170","name":"알테오젠","cat":"바이오","icon":"💉","base":249500,"desc":"정맥주사를 5분 만에 맞는 피하주사(SC)로 변환해 주는 원천기술을 보유한 코스닥 대장주입니다."},
+      {"id":"005500","name":"삼진제약","cat":"바이오","icon":"🤕","base":22000,"desc":"한국인의 두통약 게보린을 생산하며 오랜 신뢰를 쌓아온 전통 제약사입니다."},
+      {"id":"003850","name":"보령","cat":"바이오","icon":"❤️","base":11600,"desc":"국산 고혈압 신약 카나브를 성공시키고 우주 헬스케어에 도전하는 헬스케어사입니다."},
+      {"id":"373220","name":"LG에너지솔루션","cat":"2차전지","icon":"🔋","base":350500,"desc":"테슬라, GM 전기차에 납품되는 배터리를 양산하는 대한민국 1위 배터리 셀 제조사입니다."},
+      {"id":"005490","name":"POSCO홀딩스","cat":"2차전지","icon":"🏗️","base":310500,"desc":"포스코 제철소 철강과 아르헨티나 염호에서 배터리 핵심 원료 리튬을 생산합니다."},
+      {"id":"003670","name":"포스코퓨처엠","cat":"2차전지","icon":"⚡","base":242000,"desc":"배터리 용량을 결정하는 양극재와 충전 수명을 돕는 음극재를 모두 생산합니다."},
+      {"id":"086520","name":"에코프로","cat":"2차전지","icon":"🔄","base":79700,"desc":"원료 채굴부터 전구체, 양극재, 폐배터리 재활용까지 배터리 생태계를 구축했습니다."},
+      {"id":"247540","name":"에코프로비엠","cat":"2차전지","icon":"⚡","base":105200,"desc":"전기차 주행거리를 획기적으로 늘려주는 하이니켈 양극재 세계 1위 공급사입니다."},
+      {"id":"006400","name":"삼성SDI","cat":"2차전지","icon":"🔋","base":519000,"desc":"BMW 전기차 배터리와 화재 없는 꿈의 전고체 배터리를 개발하는 삼성 배터리사입니다."},
+      {"id":"096770","name":"SK이노베이션","cat":"2차전지","icon":"🛢️","base":122000,"desc":"정유 화학 사업과 포드 전기차에 들어가는 SK온 파우치 배터리를 아우릅니다."},
+      {"id":"010130","name":"고려아연","cat":"2차전지","icon":"🪙","base":765000,"desc":"아연과 은, 금 제련 기술을 바탕으로 2차전지 전지박과 황산니켈을 생산합니다."},
+      {"id":"004020","name":"현대제철","cat":"2차전지","icon":"🏗️","base":29200,"desc":"자동차 차체에 들어가는 고장력 강판과 대형 건설용 철근 형강을 만듭니다."},
+      {"id":"001230","name":"동국제강","cat":"2차전지","icon":"🏢","base":10200,"desc":"가전제품 겉면에 쓰이는 컬러강판 시장을 이끄는 대한민국 대표 철강사입니다."},
+      {"id":"066970","name":"엘앤에프","cat":"2차전지","icon":"⚡","base":118000,"desc":"니켈 함량 90% 이상의 NCMA 단결정 양극재를 테슬라 등에 공급하는 소재사입니다."},
+      {"id":"034020","name":"두산에너빌리티","cat":"2차전지","icon":"⚛️","base":21200,"desc":"대형 원자력 발전소와 가스터빈, 해상풍력 발전 설비를 제작하는 에너지 장비사입니다."},
+      {"id":"105560","name":"KB금융","cat":"금융/지주","icon":"🏦","base":173000,"desc":"KB국민은행, 국민카드, KB증권을 아우르는 대한민국 최대 종합 금융그룹입니다."},
+      {"id":"055550","name":"신한지주","cat":"금융/지주","icon":"🏦","base":109400,"desc":"신한은행, 신한카드, 신한투자증권으로 안정적 금융 서비스를 제공하는 지주사입니다."},
+      {"id":"086790","name":"하나금융지주","cat":"금융/지주","icon":"🏦","base":88500,"desc":"하나은행과 트래블로그 카드로 청소년 해외 환전 무료 돌풍을 일으킨 금융사입니다."},
+      {"id":"316140","name":"우리금융지주","cat":"금융/지주","icon":"🏦","base":22400,"desc":"우리은행과 우리카드를 중심으로 기업 및 서민 금융에 든든한 전통 금융사입니다."},
+      {"id":"323410","name":"카카오뱅크","cat":"금융/지주","icon":"🟡","base":22600,"desc":"청소년 mini 카드와 간편 이체로 10대들의 금융 습관을 바꾼 1등 모바일 은행입니다."},
+      {"id":"032830","name":"삼성생명","cat":"금융/지주","icon":"📜","base":102000,"desc":"가족의 건강과 노후를 책임지는 자산 규모 1위 대한민국 대표 생명보험사입니다."},
+      {"id":"000810","name":"삼성화재","cat":"금융/지주","icon":"🛡️","base":388000,"desc":"애니카 자동차보험과 화재보험, 펫보험을 보장하는 손해보험 1등 기업입니다."},
+      {"id":"006800","name":"미래에셋증권","cat":"금융/지주","icon":"📈","base":8850,"desc":"해외 주식 투자와 퇴직연금 자산을 가장 많이 굴리는 대한민국 대표 대형 증권사입니다."},
+      {"id":"039490","name":"키움증권","cat":"금융/지주","icon":"📊","base":134000,"desc":"영웅문 플랫폼으로 개인 주식투자자 점유율 1위를 지켜온 온라인 증권사입니다."},
+      {"id":"071050","name":"한국금융지주","cat":"금융/지주","icon":"🏢","base":77500,"desc":"한국투자증권과 카카오뱅크 주요 주주로서 기업공개(IPO)에 특화된 금융그룹입니다."},
+      {"id":"005940","name":"NH투자증권","cat":"금융/지주","icon":"🌾","base":14500,"desc":"나무(NAMUH) 모바일 증권 앱과 농협 금융 네트워크를 기반으로 한 대형 증권사입니다."}
+    ];
+
+    // 거시경제 쇼크 20종 (호재 10종 / 악재 10종)
+    const MACRO_GOOD_SHOCKS = [
+      {"id":"BOOM_KFOOD","title":"🍜 K-푸드 글로벌 열풍","msg":"불닭볶음면·만두 등 글로벌 품절 대란! 해외 수출 신기록 달성으로 음식료 기업의 실적이 급증합니다.","isUp":true,"shockSector":"식품/외식","rateStr":"+15%","rateMult":1.15,"relatedCodes":["003230","004370","271560","097950"],"targetSectors":["식품/외식","뷰티/유통"],"summary":"해외 매장 품절 대란과 K-컬처 인기로 음식료 기업들의 해외 매출 비중이 사상 최대치를 경신했습니다."},
+      {"id":"BOOM_AI_TECH","title":"🤖 AI 반도체 수주 잭팟","msg":"빅테크 기업의 초거대 AI 인프라 투자 확대로 HBM 메모리와 차세대 본더 장비 독점 공급 계약이 체결되었습니다.","isUp":true,"shockSector":"IT/반도체","rateStr":"+16%","rateMult":1.16,"relatedCodes":["005930","000660","042700","058470"],"targetSectors":["IT/반도체"],"summary":"글로벌 AI 가속기 생산에 필수적인 초고대역폭 메모리 주문량이 폭증하며 반도체 밸류체인이 급등합니다."},
+      {"id":"BOOM_BATTERY","title":"🔋 2차전지 초대형 공급계약","msg":"북미 글로벌 완성차 제조사와 수십조 원 규모의 차세대 전기차 배터리 장기 납품 계약이 전격 성사되었습니다.","isUp":true,"shockSector":"2차전지","rateStr":"+14%","rateMult":1.14,"relatedCodes":["373220","003670","247540","006400"],"targetSectors":["2차전지","모빌리티"],"summary":"하이니켈 양극재 및 파우치 배터리 대규모 수주로 2차전지 관련 기업들의 가동률이 100%에 달하고 있습니다."},
+      {"id":"BOOM_BIO_FDA","title":"🧬 바이오 FDA 품목승인","msg":"국산 토종 항암 신약이 미국 FDA 최종 품목허가를 취득하며 글로벌 제약 시장 처방이 본격화됩니다.","isUp":true,"shockSector":"바이오","rateStr":"+18%","rateMult":1.18,"relatedCodes":["000100","207940","196170","128940"],"targetSectors":["바이오"],"summary":"신약 후보물질의 미국 시장 독점 판매권 확보로 막대한 마일스톤과 로열티 유입이 기대됩니다."},
+      {"id":"BOOM_RATE_CUT","title":"🏦 기준금리 전격 인하","msg":"중앙은행이 경기 부양을 위해 기준금리를 기습 인하하며 풍부한 시중 유동성이 주식 시장으로 대거 유입됩니다.","isUp":true,"shockSector":"거시경제","rateStr":"+15%","rateMult":1.15,"relatedCodes":["035420","035720","259960","000100"],"targetSectors":["IT/반도체","게임/엔터","바이오"],"summary":"시중 자금 조달 금리 인하로 미래 가치가 높은 테크·성장 기업들의 밸류에이션이 대폭 재평가됩니다."},
+      {"id":"BOOM_TAX_CREDIT","title":"👑 반도체 메가클러스터 전폭 세제 지원","msg":"정부가 국가첨단전략산업 시설투자 세액공제를 대폭 확대하고 용인 클러스터 전력·용수 인프라 국비 지원을 확정했습니다.","isUp":true,"shockSector":"IT/반도체","rateStr":"+14%","rateMult":1.14,"relatedCodes":["005930","000660","042700","058470","039030"],"targetSectors":["IT/반도체"],"summary":"기업들의 조 단위 설비 투자 비용 절감 및 차세대 파운드리·메모리 양산 인프라 구축에 탄력이 붙었습니다."},
+      {"id":"BOOM_CREDIT_UPGRADE","title":"📈 국가 신용등급 역대 최고 상향","msg":"국제 3대 신용평가사가 한국의 재정 건전성과 수출 경쟁력을 높이 평가해 국가 신용등급을 한 단계 전격 상향 조정했습니다.","isUp":true,"shockSector":"금융/지주","rateStr":"+13%","rateMult":1.13,"relatedCodes":["105560","055550","086790","316140","028260"],"targetSectors":["금융/지주","모빌리티"],"summary":"국가 대외 신인도 제고로 한국 기업들의 해외 채권 발행 금리가 급락하고 외국인 장기 투자 자금이 대거 유입됩니다."},
+      {"id":"BOOM_GLOBAL_RALLY","title":"🌐 글로벌 증시 불장 & 외국인 3조 순매수","msg":"뉴욕 증시의 기술주 랠리와 함께 외국인 투자자가 국내 대표 지수 선·현물을 하루 만에 3조 원 넘게 순매수했습니다.","isUp":true,"shockSector":"거시경제","rateStr":"+15%","rateMult":1.15,"relatedCodes":["005930","000660","005380","000270","068270"],"targetSectors":["IT/반도체","모빌리티","바이오"],"summary":"환율 안정과 글로벌 자산운용사들의 신흥국 비중 확대 전략에 힘입어 전 업종 대형주에 강력한 매수세가 집중되었습니다."},
+      {"id":"BOOM_LOGISTICS_DOWN","title":"🚢 국제 해상 운임·유류비 안정화","msg":"글로벌 물류 병목이 해소되고 국제 유가와 컨테이너 운임 지수가 하향 안정화되며 수출 제조업계 물류비 부담이 덜어졌습니다.","isUp":true,"shockSector":"모빌리티","rateStr":"+13%","rateMult":1.13,"relatedCodes":["003490","011200","005380","000270"],"targetSectors":["모빌리티","식품/외식","뷰티/유통"],"summary":"선박 운임과 항공 화물비 정상화로 완성차, 가공식품, 화장품 등 주력 수출 기업들의 분기 영업이익률이 대폭 개선되었습니다."},
+      {"id":"BOOM_VALUE_UP","title":"💎 기업 밸류업 프로그램 & 자사주 소각 붐","msg":"상장사들의 파격적인 배당 확대, 자사주 소각 의무화, 배당소득 분리과세 법안이 통과되며 코리아 디스카운트가 해소됩니다.","isUp":true,"shockSector":"금융/지주","rateStr":"+16%","rateMult":1.16,"relatedCodes":["105560","055550","086790","005380","032830"],"targetSectors":["금융/지주","모빌리티"],"summary":"저PBR 가치주들의 주주환원율이 선진국 수준으로 상향되며 배당 투자자와 글로벌 펀드의 자금이 쏟아지고 있습니다."}
+    ];
+
+    const MACRO_BAD_SHOCKS = [
+      {"id":"CRASH_RATE_HIKE","title":"📉 기준금리 전격 인상","msg":"물가 급등 우려로 중앙은행이 기준금리를 기습 인상하며 미래 성장 가치가 큰 IT·게임주가 급락합니다.","isUp":false,"shockSector":"거시경제","rateStr":"-14%","rateMult":0.86,"relatedCodes":["035420","035720","259960","352820"],"targetSectors":["IT/반도체","게임/엔터"],"summary":"화폐 긴축 기조가 강화되며 투자 심리가 급랭하고 미래 이익 할인율이 높아져 성장주가 큰 타격을 입었습니다."},
+      {"id":"CRASH_OIL_SHOCK","title":"🛢️ 국제 유가·물류비 폭등","msg":"중동 분쟁으로 국제 유가와 해상 운임이 폭등해 항공사 유류비 부담과 유통·제조업 물류비가 폭증합니다.","isUp":false,"shockSector":"모빌리티","rateStr":"-13%","rateMult":0.87,"relatedCodes":["003490","011200","005380","028260"],"targetSectors":["모빌리티","뷰티/유통"],"summary":"배럴당 유가가 급등하면서 항공·해운·제조업 전반의 연료비 마진이 심각하게 훼손되고 있습니다."},
+      {"id":"CRASH_FOOD_COST","title":"🌾 국제 곡물 원가 쇼크","msg":"이상기후로 밀가루·팜유·대두 가격이 치솟아 라면, 과자, 가공식품 제조사들의 영업이익이 급감합니다.","isUp":false,"shockSector":"식품/외식","rateStr":"-13%","rateMult":0.87,"relatedCodes":["004370","007310","271560","005180"],"targetSectors":["식품/외식"],"summary":"핵심 식자재 원가가 단기간에 30% 이상 폭등하며 제품 마진율이 크게 떨어졌습니다."},
+      {"id":"CRASH_SUPPLY_CHAIN","title":"⚡ 핵심 광물 수출 통제","msg":"주요 자원 보유국이 핵심 배터리 원자재(리튬·니켈) 수출을 통제하여 생산 비용이 치솟습니다.","isUp":false,"shockSector":"2차전지","rateStr":"-14%","rateMult":0.86,"relatedCodes":["373220","086520","005490","066970"],"targetSectors":["2차전지"],"summary":"광물 자원 무기화로 인한 원자재 수급 차질 우려가 배터리 셀 제조사에 하방 압력을 가합니다."},
+      {"id":"CRASH_EXCHANGE_VOL","title":"💵 환율 급등(원화 가치 약세)","msg":"원/달러 환율이 급격히 상승하며 에너지·원자재 수입 기업들의 비용 부담과 외국인 자금 이탈이 심화됩니다.","isUp":false,"shockSector":"금융/지주","rateStr":"-12%","rateMult":0.88,"relatedCodes":["105560","003490","028260","007070"],"targetSectors":["금융/지주","뷰티/유통","모빌리티"],"summary":"환차손 우려로 외국인 매도세가 출회되고 수입 원자재 결제 대금 부담이 기업 수익성을 압박합니다."},
+      {"id":"CRASH_STAGFLATION","title":"🥶 글로벌 스태그플레이션 공포","msg":"경기 침체 속 물가 상승이 지속되는 스태그플레이션 조짐에 가계 소비 심리가 급격히 얼어붙었습니다.","isUp":false,"shockSector":"뷰티/유통","rateStr":"-14%","rateMult":0.86,"relatedCodes":["028260","139480","004170","090430"],"targetSectors":["뷰티/유통","식품/외식"],"summary":"실질 가처분 소득 감소로 백화점, 마트, 패션, 외식 지출이 전방위적으로 축소되고 있습니다."},
+      {"id":"CRASH_TARIFF_WAR","title":"🚨 무역 보호주의 & 고율 관세 장벽 부과","msg":"주요 교역국이 자국 산업 보호를 이유로 한국산 수입품(자동차·철강·전자)에 20% 보복 관세를 예고했습니다.","isUp":false,"shockSector":"모빌리티","rateStr":"-15%","rateMult":0.85,"relatedCodes":["005380","000270","012330","005490"],"targetSectors":["모빌리티","IT/반도체"],"summary":"수출 주도형 한국 경제의 주력 품목 가격 경쟁력 약화 및 해외 현지 공장 비용 증가 우려가 커졌습니다."},
+      {"id":"CRASH_CLOUD_BLACKOUT","title":"⚠️ 글로벌 클라우드 서비스 대규모 장애","msg":"글로벌 데이터센터 전력망 장애 및 보안 솔루션 오류로 전 세계 인터넷 서비스와 게임 플랫폼이 일제히 마비되었습니다.","isUp":false,"shockSector":"게임/엔터","rateStr":"-15%","rateMult":0.85,"relatedCodes":["259960","035420","035720","251270"],"targetSectors":["게임/엔터","IT/반도체"],"summary":"온라인 게임 접속 불가 및 플랫폼 결제 시스템 중단으로 IT·소프트웨어 기업들의 당일 매출 피해가 발생했습니다."},
+      {"id":"CRASH_CLIMATE_ENERGY","title":"🔥 기록적 폭염·가뭄 산업용 전력 제한 조치","msg":"전력 수요 폭증으로 전력거래소가 주요 산업단지 반도체·철강 공장에 전력 감축 명령을 발동했습니다.","isUp":false,"shockSector":"IT/반도체","rateStr":"-13%","rateMult":0.87,"relatedCodes":["005930","000660","005490","004020"],"targetSectors":["IT/반도체"],"summary":"24시간 연속 가동이 필수적인 반도체·제철 라인 가동률 저하로 납기 지연 및 생산 차질이 불가피해졌습니다."},
+      {"id":"CRASH_CREDIT_CRUNCH","title":"💥 고금리 장기화 회사채 차환 경색 사태","msg":"부동산 PF 및 일부 취약 기업의 채무 불이행 여파로 회사채 발행 금리가 폭등하며 자금 조달 경색이 발생했습니다.","isUp":false,"shockSector":"금융/지주","rateStr":"-15%","rateMult":0.85,"relatedCodes":["105560","055550","316140","000810"],"targetSectors":["금융/지주"],"summary":"단기 자금 시장 경색과 대손충당금 적립 부담으로 금융 지주사와 2금융권의 건전성 지표가 악화되었습니다."}
+    ];
+
+    const GOOD_SHOCKS = MACRO_GOOD_SHOCKS;
+    const BAD_SHOCKS = MACRO_BAD_SHOCKS;
+    const ALL_SHOCKS = [...GOOD_SHOCKS, ...BAD_SHOCKS];
+
+    // 업종별 호재/악재 카탈로그
+    const SECTOR_CATALYSTS = {
+      "식품/외식":{
+        "name":"식품/외식","icon":"🍜","stocksHint":"삼양식품, 농심, 오뚜기, CJ제일제당, 빙그레, 오리온 등 12개사",
+        "good":[
+          {"id":"FOOD_BOOM_EXPORT","name":"🌟 K-푸드 글로벌 수출 폭증","desc":"불닭·라면·만두 등 글로벌 품절 대란과 해외 편의점 매대 점령","mult":1.12,"rateStr":"+12%"},
+          {"id":"FOOD_GRAIN_DOWN","name":"🌾 국제 곡물·팜유 원가 안정","desc":"밀·팜유 등 원자재 가격 하락으로 가공식품 제조사 영업이익률 급증","mult":1.16,"rateStr":"+16%"},
+          {"id":"FOOD_NEW_MEGA","name":"🚀 프리미엄 신제품 품절 대란","desc":"MZ세대 SNS 입소문을 탄 히트 디저트·베이커리 출시로 매출 급등","mult":1.2,"rateStr":"+20%"},
+          {"id":"FOOD_POLICY_AID","name":"👑 K-브랜드 수출 세제 혜택","desc":"정부 K-푸드 글로벌 육성 펀드 지원 및 통관 우대 조치 발표","mult":1.25,"rateStr":"+25%"}
+        ],
+        "bad":[
+          {"id":"FOOD_COST_SHOCK","name":"📉 국제 곡물·물류비 급등","desc":"밀가루·대두 원가 상승으로 주요 식품 기업 분기 영업이익 급감","mult":0.9,"rateStr":"-10%"},
+          {"id":"FOOD_SAFETY_ISSUE","name":"⚠️ 수입 원료 통관 검역 강화","desc":"해외 주요국 통관 지연에 따른 수출 납기 차질 및 검역 이슈 발생","mult":0.86,"rateStr":"-14%"},
+          {"id":"FOOD_CONSUME_DROP","name":"⚖️ 외식 소비 긴축 심리 확산","desc":"고물가 속 가계 외식 및 가공식품 소비 감소로 매출 성장 정체","mult":0.82,"rateStr":"-18%"},
+          {"id":"FOOD_TARIFF_BARRIER","name":"🚨 주요 수출국 무역 관세 장벽","desc":"외국 정부의 자국 농축산물 보호를 위한 수입 식품 고율 관세 부과","mult":0.76,"rateStr":"-24%"}
+        ]
+      },
+      "IT/반도체":{
+        "name":"IT/반도체","icon":"📱","stocksHint":"삼성전자, SK하이닉스, 네이버, 한미반도체, 리노공업 등 14개사",
+        "good":[
+          {"id":"TECH_AI_SURGE","name":"🌟 AI 데이터센터 서버 주문 폭주","desc":"빅테크 기업들의 고성능 HBM 메모리와 차세대 본더 장비 선점 경쟁","mult":1.12,"rateStr":"+12%"},
+          {"id":"TECH_CHIP_PRICE_UP","name":"📈 D램·낸드 고정가격 급반등","desc":"공급 부족으로 메모리 반도체 판가 인상 어닝 서프라이즈 달성","mult":1.16,"rateStr":"+16%"},
+          {"id":"TECH_NANO_SUCCESS","name":"🚀 차세대 초미세 공정 수율 돌파","desc":"최첨단 2나노·차세대 HBM4 양산 세계 최초 성공 및 대형 수주","mult":1.2,"rateStr":"+20%"},
+          {"id":"TECH_MEGA_CLUSTER","name":"👑 반도체 클러스터 세제 혜택","desc":"정부 국가전략기술 세액공제 전폭 지원 및 전력 인프라 확충","mult":1.25,"rateStr":"+25%"}
+        ],
+        "bad":[
+          {"id":"TECH_IT_SLOW","name":"📉 PC·스마트폰 수요 둔화","desc":"글로벌 완제품 재고 누적 및 IT 기기 신규 칩 주문 축소","mult":0.9,"rateStr":"-10%"},
+          {"id":"TECH_RARE_BAN","name":"⚠️ 핵심 희토류·광물 수출 통제","desc":"반도체 공정 특수가스 및 원자재 수급 불안으로 생산 원가 압박","mult":0.86,"rateStr":"-14%"},
+          {"id":"TECH_EXPORT_RESTRICT","name":"⚖️ 첨단 반도체 수출 통제 규제","desc":"주요 수출 대상국 대상 고성능 칩 판매 제한 조치 시행","mult":0.82,"rateStr":"-18%"},
+          {"id":"TECH_SUPPLY_HALT","name":"🚨 글로벌 파운드리 공급망 병목","desc":"핵심 검사 장비 납기 지연 및 원판 웨이퍼 조달 차질 발생","mult":0.76,"rateStr":"-24%"}
+        ]
+      },
+      "게임/엔터":{
+        "name":"게임/엔터","icon":"🎮","stocksHint":"크래프톤, 하이브, JYP, 에스엠, 엔씨소프트 등 13개사",
+        "good":[
+          {"id":"ENT_WORLD_TOUR","name":"🌟 K-POP 월드투어 전회 매진","desc":"글로벌 음원 차트 올킬 및 스타디움 콘서트 티켓 완판 행진","mult":1.12,"rateStr":"+12%"},
+          {"id":"ENT_GAME_HIT","name":"🚀 신작 게임 동시접속자 100만","desc":"글로벌 스팀·앱스토어 매출 1위 석권으로 분기 영업이익 급증","mult":1.16,"rateStr":"+16%"},
+          {"id":"ENT_IP_EXPAND","name":"👑 글로벌 웹툰·드라마 1위 달성","desc":"콘텐츠 IP 라이선싱 및 해외 OTT 판권 판매 대박 계약 체결","mult":1.2,"rateStr":"+20%"},
+          {"id":"ENT_REGULATION_FREE","name":"📜 해외 판호 대거 발급·규제 완화","desc":"최대 해외 시장 게임 서비스 승인 및 문화 펀드 세제 혜택","mult":1.25,"rateStr":"+25%"}
+        ],
+        "bad":[
+          {"id":"ENT_GAME_DELAY","name":"📉 주력 신작 출시 무기한 연기","desc":"완성도 이슈로 기대작 출시가 미뤄지며 실적 공백 우려 확대","mult":0.9,"rateStr":"-10%"},
+          {"id":"ENT_MEMBER_HIATUS","name":"⚠️ 핵심 아티스트 활동 공백기","desc":"전속계약 분쟁 및 군 입대 등으로 주력 아티스트 매출 공백 발생","mult":0.86,"rateStr":"-14%"},
+          {"id":"ENT_REGULATION_STRICT","name":"⚖️ 게임 이용시간 및 결제 규제","desc":"청소년 과금 한도 규제 및 확률형 아이템 규제 강화 법안 통과","mult":0.82,"rateStr":"-18%"},
+          {"id":"ENT_COPYRIGHT_LEAK","name":"🚨 핵심 소스코드 유출 및 표절 소송","desc":"대형 저작권 소송전 발발 및 IP 브랜드 신뢰도 훼손","mult":0.76,"rateStr":"-24%"}
+        ]
+      },
+      "모빌리티":{
+        "name":"자동차/항공","icon":"🚗","stocksHint":"현대차, 기아, 현대모비스, 대한항공, HMM 등 13개사",
+        "good":[
+          {"id":"MOB_US_SALES","name":"🌟 북미 하이브리드·SUV 판매 1위","desc":"북미 시장 점유율 신기록 및 고수익 차종 판매 비중 확대로 호실적","mult":1.12,"rateStr":"+12%"},
+          {"id":"MOB_AIR_TRAVEL","name":"✈️ 해외 여행객 폭증 여객 신고가","desc":"국제선 노선 만석 운항 및 고단가 장거리 여객 수요 회복","mult":1.16,"rateStr":"+16%"},
+          {"id":"MOB_AUTO_PILOT","name":"🚀 자율주행 레벨3 상용화 성공","desc":"소프트웨어 중심 자동차(SDV) 무선 업데이트 기술 상용화 선도","mult":1.2,"rateStr":"+20%"},
+          {"id":"MOB_GOV_SUBSIDY","name":"👑 친환경차 보조금 확대 수혜","desc":"하이브리드·전기차 세제 감면 기간 연장 및 친환경차 구매 지원","mult":1.25,"rateStr":"+25%"}
+        ],
+        "bad":[
+          {"id":"MOB_OIL_SPIKE","name":"📉 국제유가 급등 및 항공유 부담","desc":"항공 연료비 및 해상 벙커씨유 가격 폭등으로 운송 마진 압박","mult":0.9,"rateStr":"-10%"},
+          {"id":"MOB_AUTO_RECALL","name":"⚠️ 주력 차종 대규모 리콜","desc":"품질 결함에 따른 수십만 대 리콜 충당금 반영으로 분기 적자 위기","mult":0.86,"rateStr":"-14%"},
+          {"id":"MOB_FREIGHT_DROP","name":"⚖️ 글로벌 해상 운임 지수 급락","desc":"해상 물동량 감소로 컨테이너선 운임이 급락하며 선사 수익성 악화","mult":0.82,"rateStr":"-18%"},
+          {"id":"MOB_PARTS_STRIKE","name":"🚨 핵심 부품 공급 차질 생산 중단","desc":"물류 파업 및 협력업체 공급 차질로 완성차 조립 라인 셧다운","mult":0.76,"rateStr":"-24%"}]
+      },
+      "뷰티/유통":{
+        "name":"뷰티/유통","icon":"💄","stocksHint":"아모레퍼시픽, 코스맥스, 한국콜마, BGF리테일, 이마트 등 13개사",
+        "good":[
+          {"id":"BEAUTY_AMAZON_HIT","name":"🌟 K-인디 뷰티 아마존 1위","desc":"스킨케어·선크림이 미국 아마존 베스트셀러 석권하며 주문 폭주","mult":1.12,"rateStr":"+12%"},
+          {"id":"BEAUTY_DUTYFREE_SURGE","name":"🛍️ 외국인 관광객 급증 쇼핑 대박","desc":"백화점 및 도심 핫플 팝업스토어 외국인 매출 사상 최대","mult":1.16,"rateStr":"+16%"},
+          {"id":"BEAUTY_PB_SUCCESS","name":"🚀 편의점 PB 디저트 대히트","desc":"초히트 연세우유 크림빵 등 기획 상품 판매량 1,000만 개 돌파","mult":1.2,"rateStr":"+20%"},
+          {"id":"BEAUTY_GLOBAL_MNA","name":"👑 글로벌 럭셔리 유통망 독점 입점","desc":"세포라 등 전 세계 수천 개 매장에 한국 화장품 독점 공급","mult":1.25,"rateStr":"+25%"}
+        ],
+        "bad":[
+          {"id":"BEAUTY_DOMESTIC_STAGNANT","name":"📉 내수 소비 침체 가계 지출 축소","desc":"가계 실질 소득 감소로 대형마트 및 패션 매장 객수 감소","mult":0.9,"rateStr":"-10%"},
+          {"id":"BEAUTY_RAW_MATERIAL","name":"⚠️ 화학 기초 원료 가격 급등","desc":"화장품 베이스 오일과 기능성 원료 가격 상승으로 마진율 저하","mult":0.86,"rateStr":"-14%"},
+          {"id":"BEAUTY_COMPETITION","name":"⚖️ 초저가 이커머스 출혈 경쟁","desc":"해외 직구 및 초저가 플랫폼 공세에 따른 마케팅 판촉비 폭증","mult":0.82,"rateStr":"-18%"},
+          {"id":"BEAUTY_OVERSEAS_BOYCOTT","name":"🚨 주요 수출국 발주 취소 사태","desc":"해외 유통 채널 재고 누적으로 신규 주문 발주 대폭 축소","mult":0.76,"rateStr":"-24%"}
+        ]
+      },
+      "바이오":{
+        "name":"바이오/제약","icon":"🧬","stocksHint":"삼성바이오, 셀트리온, 유한양행, 알테오젠, 한미약품 등 12개사",
+        "good":[
+          {"id":"BIO_FDA_PASS","name":"🌟 토종 폐암 신약 미국 FDA 승인","desc":"글로벌 혁신 신약의 미국 시장 진출과 대규모 처방 시작","mult":1.12,"rateStr":"+12%"},
+          {"id":"BIO_LICENSE_OUT","name":"💉 조 단위 원천 기술 수출","desc":"글로벌 빅파마와 정맥주사를 피하주사로 바꾸는 플랫폼 기술 독점 계약","mult":1.16,"rateStr":"+16%"},
+          {"id":"BIO_FACTORY_CONTRACT","name":"🚀 세계 최대 바이오 수주 잭팟","desc":"다국적 제약사의 주력 항암 바이오시밀러 대규모 위탁생산 계약","mult":1.2,"rateStr":"+20%"},
+          {"id":"BIO_INSURANCE_BENEFIT","name":"👑 신약 미국 의료보험 전격 등재","desc":"미국 주요 사보험사 처방집 선호 의약품 등재로 매출 급증 전망","mult":1.25,"rateStr":"+25%"}
+        ],
+        "bad":[
+          {"id":"BIO_CLINICAL_FAIL","name":"📉 주요 신약 임상 유의성 미달","desc":"핵심 파이프라인 임상 데이터 통계적 유의성 입증 실패 발표","mult":0.9,"rateStr":"-10%"},
+          {"id":"BIO_FDA_REJECT","name":"⚠️ FDA 보완요구서(CRL) 수령","desc":"제조공정 실사 지적 및 추가 임상 자료 요구로 품목허가 보류","mult":0.86,"rateStr":"-14%"},
+          {"id":"BIO_PATENT_DISPUTE","name":"⚖️ 다국적 제약사 특허 침해 소송","desc":"해외 법원에 판매 금지 가처분 소송 피소로 불확실성 증폭","mult":0.82,"rateStr":"-18%"},
+          {"id":"BIO_DRUG_PRICE_CUT","name":"🚨 주요 국가 약가 인하 정책 시행","desc":"정부 바이오 의약품 보험 급여 환급액 삭감으로 수익성 타격","mult":0.76,"rateStr":"-24%"}
+        ]
+      },
+      "2차전지":{
+        "name":"2차전지/소재","icon":"🔋","stocksHint":"LG에너지솔루션, POSCO홀딩스, 포스코퓨처엠, 에코프로, 에코프로비엠 등 12개사",
+        "good":[
+          {"id":"BATTERY_OEM_CONTRACT","name":"🌟 완성차 수십조원 배터리 수주","desc":"글로벌 톱 자동차 제조사와 전기차용 파우치 배터리 장기 납품 체결","mult":1.12,"rateStr":"+12%"},
+          {"id":"BATTERY_LITHIUM_STABLE","name":"📈 핵심 양극재·리튬 판가 반등","desc":"광물 가격 바닥 통과로 재고평가손실 환입 및 이익률 정상화","mult":1.16,"rateStr":"+16%"},
+          {"id":"BATTERY_SOLID_TECH","name":"🚀 꿈의 전고체 배터리 파일럿 가동","desc":"화재 없는 차세대 전고체 배터리 시제품 생산 성공","mult":1.2,"rateStr":"+20%"},
+          {"id":"BATTERY_IRA_BENEFIT","name":"👑 첨단제조 세액공제 전폭 수혜","desc":"북미 현지 생산 보조금이 분기 영업이익에 대거 반영","mult":1.25,"rateStr":"+25%"}
+        ],
+        "bad":[
+          {"id":"BATTERY_EV_CHASM","name":"📉 글로벌 전기차 캐즘(수요 둔화)","desc":"완성차 고객사의 전기차 생산 속도 조절로 공장 가동률 저하","mult":0.9,"rateStr":"-10%"},
+          {"id":"BATTERY_MINERAL_BAN","name":"⚠️ 핵심 광물(리튬·니켈) 수출 통제","desc":"자원 보유국의 광물 수출 제한으로 원자재 조달 비용 급상승","mult":0.86,"rateStr":"-14%"},
+          {"id":"BATTERY_SUBSIDY_CUT","name":"⚖️ 주요국 전기차 구매 보조금 축소","desc":"소비자 구매 부담 증가로 인한 단기 전기차 등록 대수 급감","mult":0.82,"rateStr":"-18%"},
+          {"id":"BATTERY_LFP_THREAT","name":"🚨 저가 LFP 배터리 점유율 잠식","desc":"해외 초저가 배터리 공세로 보급형 전기차 시장 점유율 경쟁 심화","mult":0.76,"rateStr":"-24%"}
+        ]
+      },
+      "금융/지주":{
+        "name":"금융/지주","icon":"🏦","stocksHint":"KB금융, 신한지주, 하나금융, 우리금융, 카카오뱅크, 삼성생명 등 11개사",
+        "good":[
+          {"id":"FIN_VALUE_UP","name":"🌟 기업 밸류업 프로그램 수혜","desc":"자사주 소각 및 배당 성향 40% 확대 공시로 외국인 매수 쇄도","mult":1.12,"rateStr":"+12%"},
+          {"id":"FIN_NIM_IMPROVE","name":"📈 순이자마진 방어 최대 이익","desc":"탄탄한 자산 건전성과 비이자 수수료 이익 증가로 호실적 기록","mult":1.16,"rateStr":"+16%"},
+          {"id":"FIN_SUPER_APP","name":"🚀 모바일 금융 플랫폼 2천만 돌파","desc":"청소년·MZ세대 타깃 간편 금융 서비스 성공으로 충성 고객 확보","mult":1.2,"rateStr":"+20%"},
+          {"id":"FIN_RECORD_DIVIDEND","name":"👑 파격적 분기 배당금 상향","desc":"연간 배당수익률 7% 돌파 기대감에 안정적 배당 투자자 집중","mult":1.25,"rateStr":"+25%"}
+        ],
+        "bad":[
+          {"id":"FIN_RATE_CUT_MARGIN","name":"📉 예대마진 축소로 이자수익 둔화","desc":"대출금리 하락 속도 대비 조달 비용 부담으로 순이자마진 축소","mult":0.9,"rateStr":"-10%"},
+          {"id":"FIN_DELINQUENCY_UP","name":"⚠️ 연체율 상승 대손충당금 부담","desc":"경기 침체 장기화로 부실 채권 충당금 적립액이 순이익 갉아먹음","mult":0.86,"rateStr":"-14%"},
+          {"id":"FIN_REGULATION_STRICT","name":"⚖️ 가계대출 총량 규제 및 DSR 강화","desc":"신규 주택담보대출 한도 축소로 은행권 대출 자산 성장 정체","mult":0.82,"rateStr":"-18%"},
+          {"id":"FIN_WINDFALL_TAX","name":"🚨 상생금융 분담금 출연 압박","desc":"서민 금융 취약계층 지원을 위한 수천억 원대 상생 분담금 지출","mult":0.76,"rateStr":"-24%"}
+        ]
+      }
+    };
+
+    function getKrxTickSize(price) {
+      if (price < 2000) return 1;
+      if (price < 5000) return 5;
+      if (price < 20000) return 10;
+      if (price < 50000) return 50;
+      if (price < 200000) return 100;
+      if (price < 500000) return 500;
+      return 1000;
+    }
+    function alignToKrxTick(price) {
+      const tick = getKrxTickSize(price);
+      return Math.round(price / tick) * tick;
+    }
+
+    const ALL_STOCKS = RAW_STOCKS.map(item => {
+      const limitHigh = alignToKrxTick(item.base * 1.30);
+      const limitLow = alignToKrxTick(item.base * 0.70);
+      const history = [];
+      let cur = item.base;
+      for (let i = 0; i < 40; i++) {
+        const tick = getKrxTickSize(cur);
+        const steps = (Math.random() - 0.495) > 0 ? 1 : -1;
+        cur = Math.max(limitLow, Math.min(limitHigh, cur + (tick * steps)));
+        history.push(cur);
+      }
+      return {
+        ...item,
+        price: cur,
+        diff: cur - item.base,
+        rate: Number(((cur - item.base) / item.base * 100).toFixed(2)),
+        limitHigh,
+        limitLow,
+        high: Math.max(...history),
+        low: Math.min(...history),
+        history
+      };
+    });
+
+    // 자기 자신이 보낸 브로드캐스트 메시지 수신 차단을 위한 고유 클라이언트 식별자
+    const myClientId = 'krx_client_' + Math.random().toString(36).substring(2, 10) + '_' + Date.now();
+
+    let SEED_MONEY = 10000000;
+    let student = {
+      id: '',
+      name: '',
+      classNum: 1,
+      studentNum: 1,
+      cash: SEED_MONEY,
+      totalAsset: SEED_MONEY,
+      profitRate: 0,
+      portfolio: {},
+      tradeCount: 0,
+      lastSeen: Date.now()
+    };
+
+    let isTeacherMode = false;
+    let classroomStudents = [];
+    let bannedStudents = [];
+    let showBannedView = false;
+    let selectedStockId = '005930';
+    let currentSector = 'ALL';
+    let searchTerm = '';
+    let marketConfigMinutes = 10;
+    let marketSeconds = 10 * 60;
+    let marketState = 'WAITING';
+    let isAutoShockEnabled = true;
+    let randomShockSecondsLeft = Math.floor(Math.random() * (1800 - 1200 + 1)) + 1200;
+    let selectedClass = '1반';
+    let qrUrlMode = 'current';
+
+    // 종목별 고유 뉴스 및 속보 관리 시스템
+    let currentDetailView = 'chart'; // 'chart' | 'news'
+    let currentActiveArticle = null;
+    let pendingPopupNews = null;
+    let newsPopupTimer = null;
+    let latestTopNews = {
+      id: "news_005930_1",
+      stockId: "005930",
+      title: "삼성전자, 차세대 12단 HBM3E 글로벌 빅테크 퀄테스트 전격 통과... 수주 잭팟 기대"
+    };
+
+    // 장중 발생한 모든 뉴스 속보를 축적 보관하는 아카이브
+    let allNewsHistory = [
+      {
+        id: "news_005930_1",
+        stockId: "005930",
+        stockName: "삼성전자",
+        stockIcon: "📱",
+        title: "삼성전자, 차세대 12단 HBM3E 글로벌 빅테크 퀄테스트 전격 통과",
+        media: "한국IT경제",
+        time: "개장 전",
+        isUp: true,
+        preview: "인공지능 가속기 시장의 핵심인 고대역폭 메모리 공급 계약 체결로 4분기 실적 서프라이즈가 가시화되었습니다.",
+        paragraphs: [
+          "삼성전자가 차세대 인공지능(AI) 반도체에 탑재되는 12단 적층 HBM3E 메모리의 글로벌 주요 빅테크 고객사 퀄테스트를 최종 통과한 것으로 확인되었습니다.",
+          "업계에 따르면 삼성전자는 이번 공급 통과를 기점으로 4분기부터 본격적인 양산 납품에 돌입하며, 내년도 공급 물량까지 선제적으로 확보해 메모리 사업부문의 수익성이 극대화될 전망입니다.",
+          "반도체 사업부 관계자는 '초미세 공정 수율 안정화와 차세대 어드밴스드 패키징 기술력이 결합해 시장 기대치를 뛰어넘는 성능을 입증했다'고 밝혔습니다."
+        ],
+        analyst: "삼성전자의 HBM 시장 진입 지연 우려가 완전히 해소되었으며, 향후 고부가가치 AI 메모리 매출 비중 확대로 주가 재평가가 가속화될 것으로 분석됩니다."
+      },
+      {
+        id: "news_000660_1",
+        stockId: "000660",
+        stockName: "SK하이닉스",
+        stockIcon: "💾",
+        title: "SK하이닉스, HBM 글로벌 공급 물량 '2026년까지 완판' 공식 선언",
+        media: "글로벌반도체뉴스",
+        time: "개장 전",
+        isUp: true,
+        preview: "엔비디아를 비롯한 글로벌 선두 AI 가속기 제조업체들의 주문 폭주로 생산 라인이 100% 풀가동 중입니다.",
+        paragraphs: [
+          "SK하이닉스가 2026년 생산 예정인 초고성능 HBM 메모리 전량에 대해 글로벌 주요 고객사들과 장기 독점 공급 계약을 매듭지었다고 발표했습니다.",
+          "이로써 SK하이닉스는 AI 메모리 분야에서 독보적인 글로벌 시장 점유율 1위 지위를 확고히 굳히게 되었습니다."
+        ],
+        analyst: "안정적인 장기 수주 잔고 확보로 반도체 다운사이클 우려를 원천 차단한 기념비적 성과입니다."
+      },
+      {
+        id: "news_003230_1",
+        stockId: "003230",
+        stockName: "삼양식품",
+        stockIcon: "🍜",
+        title: "삼양식품 '불닭', 美 월마트 4,000개 전 매장 메인 매대 전진 배치",
+        media: "K-푸드투데이",
+        time: "개장 전",
+        isUp: true,
+        preview: "미국 현지 쇼츠 챌린지 열풍에 힘입어 품절 대란이 이어지자 대형 유통망 공급 물량이 3배 확대되었습니다.",
+        paragraphs: [
+          "삼양식품의 대표 브랜드 불닭볶음면이 미국 월마트 4,000여 개 전 점포의 메인 가공식품 코너에 공식 입점되었습니다.",
+          "밀양 제2공장의 조기 완공으로 해외 수출 캐파가 대폭 증대되며 3분기 해외 매출 비중이 80%를 넘어설 것으로 집계되었습니다."
+        ],
+        analyst: "단순 유행을 넘어 현지 주류 식문화로 안착하며 식품업계 사상 최고 수준의 영업이익률을 기록 중입니다."
+      }
+    ];
+
+    let newsHistoryFilter = 'ALL'; // 'ALL' | 'GOOD' | 'BAD'
+    let newsHistorySearchQuery = '';
+
+    // 뉴스 아카이브에 새 뉴스 추가 함수
+    function pushNewsToHistory(newsItem, stock) {
+      const fullItem = {
+        ...newsItem,
+        stockId: stock.id,
+        stockName: stock.name,
+        stockIcon: stock.icon,
+        timestamp: Date.now()
+      };
+      // 중복 방지
+      const existingIdx = allNewsHistory.findIndex(n => n.id === fullItem.id);
+      if (existingIdx >= 0) {
+        allNewsHistory[existingIdx] = fullItem;
+      } else {
+        allNewsHistory.unshift(fullItem);
+      }
+      if (allNewsHistory.length > 200) allNewsHistory.pop();
+    }
+
+    // 뉴스 속보 히스토리 모달 열기/닫기
+    function openNewsHistoryModal() {
+      renderNewsHistoryList();
+      document.getElementById('newsHistoryModal').classList.remove('hidden');
+    }
+
+    function closeNewsHistoryModal() {
+      document.getElementById('newsHistoryModal').classList.add('hidden');
+    }
+
+    function backToNewsHistoryModal() {
+      closeArticleModal();
+      openNewsHistoryModal();
+    }
+
+    function setNewsFilter(filter) {
+      newsHistoryFilter = filter;
+      const btnAll = document.getElementById('btnFilterNewsAll');
+      const btnGood = document.getElementById('btnFilterNewsGood');
+      const btnBad = document.getElementById('btnFilterNewsBad');
+
+      btnAll.className = filter === 'ALL'
+        ? 'px-3 py-1.5 rounded-xl text-xs font-black transition cursor-pointer bg-indigo-600 text-white shadow-2xs'
+        : 'px-3 py-1.5 rounded-xl text-xs font-black transition cursor-pointer bg-slate-100 text-slate-700 hover:bg-slate-200';
+
+      btnGood.className = filter === 'GOOD'
+        ? 'px-3 py-1.5 rounded-xl text-xs font-black transition cursor-pointer bg-rose-600 text-white shadow-2xs'
+        : 'px-3 py-1.5 rounded-xl text-xs font-black transition cursor-pointer bg-slate-100 text-slate-700 hover:bg-rose-50 hover:text-rose-700';
+
+      btnBad.className = filter === 'BAD'
+        ? 'px-3 py-1.5 rounded-xl text-xs font-black transition cursor-pointer bg-blue-600 text-white shadow-2xs'
+        : 'px-3 py-1.5 rounded-xl text-xs font-black transition cursor-pointer bg-slate-100 text-slate-700 hover:bg-blue-50 hover:text-blue-700';
+
+      renderNewsHistoryList();
+    }
+
+    function handleNewsHistorySearch(query) {
+      newsHistorySearchQuery = (query || '').toLowerCase().trim();
+      renderNewsHistoryList();
+    }
+
+    function renderNewsHistoryList() {
+      const container = document.getElementById('newsHistoryListContainer');
+      const totalBadge = document.getElementById('newsHistoryTotalBadge');
+      const countAll = document.getElementById('filterCountAll');
+      const countGood = document.getElementById('filterCountGood');
+      const countBad = document.getElementById('filterCountBad');
+
+      if (!container) return;
+
+      const totalCount = allNewsHistory.length;
+      const goodCount = allNewsHistory.filter(n => n.isUp).length;
+      const badCount = allNewsHistory.filter(n => !n.isUp).length;
+
+      if (totalBadge) totalBadge.textContent = `총 ${totalCount}건`;
+      if (countAll) countAll.textContent = totalCount;
+      if (countGood) countGood.textContent = goodCount;
+      if (countBad) countBad.textContent = badCount;
+
+      let filtered = allNewsHistory.filter(n => {
+        if (newsHistoryFilter === 'GOOD' && !n.isUp) return false;
+        if (newsHistoryFilter === 'BAD' && n.isUp) return false;
+        if (newsHistorySearchQuery) {
+          const matchTitle = (n.title || '').toLowerCase().includes(newsHistorySearchQuery);
+          const matchStock = (n.stockName || '').toLowerCase().includes(newsHistorySearchQuery);
+          const matchCode = (n.stockId || '').includes(newsHistorySearchQuery);
+          const matchPreview = (n.preview || '').toLowerCase().includes(newsHistorySearchQuery);
+          return matchTitle || matchStock || matchCode || matchPreview;
+        }
+        return true;
+      });
+
+      if (filtered.length === 0) {
+        container.innerHTML = `
+          <div class="py-14 text-center text-slate-400 flex flex-col items-center justify-center gap-2">
+            <div class="w-12 h-12 rounded-2xl bg-slate-100 flex items-center justify-center text-slate-400 text-xl">
+              <i class="fa-regular fa-newspaper"></i>
+            </div>
+            <span class="text-xs font-black text-slate-600">조건에 일치하는 뉴스 기사가 없습니다.</span>
+            <span class="text-[11px] text-slate-400">장중 10~20초마다 새로운 종목별 뉴스가 지속적으로 발행됩니다.</span>
+          </div>
+        `;
+        return;
+      }
+
+      container.innerHTML = filtered.map(news => {
+        const isUp = news.isUp;
+        return `
+          <div onclick="openArticleFromHistory('${news.id}', '${news.stockId}')" class="p-3 bg-white hover:bg-indigo-50/60 transition cursor-pointer rounded-2xl border border-slate-100 hover:border-indigo-200 shadow-2xs group flex flex-col gap-1.5">
+            <div class="flex items-center justify-between text-[11px]">
+              <div class="flex items-center gap-1.5">
+                <span class="text-sm">${news.stockIcon || '📈'}</span>
+                <span class="font-black text-slate-900 bg-slate-100 px-2 py-0.5 rounded-md">${news.stockName || '종목'}</span>
+                <span class="text-slate-400 text-[10px] font-mono">${news.media || 'KRX 속보'}</span>
+                <span class="text-slate-300">•</span>
+                <span class="text-slate-400 text-[10px] font-mono">${news.time || '방금 전'}</span>
+              </div>
+              <span class="px-2 py-0.5 rounded-full font-black text-[10px] ${isUp ? 'bg-rose-50 text-rose-600 border border-rose-200' : 'bg-blue-50 text-blue-600 border border-blue-200'}">
+                ${isUp ? '호재 ▲' : '악재 ▼'}
+              </span>
+            </div>
+            <h4 class="text-xs font-black text-slate-900 group-hover:text-indigo-600 transition leading-snug">
+              ${news.title}
+            </h4>
+            <p class="text-[11px] text-slate-600 line-clamp-2 leading-relaxed font-medium">
+              ${news.preview}
+            </p>
+            <div class="flex items-center justify-between pt-1 border-t border-slate-100 text-[10px]">
+              <span class="text-slate-400 font-mono">코드: ${news.stockId}</span>
+              <span class="font-bold text-indigo-600 group-hover:translate-x-0.5 transition flex items-center gap-1">
+                기사 전문 보기 <i class="fa-solid fa-angle-right text-[9px]"></i>
+              </span>
+            </div>
+          </div>
+        `;
+      }).join('');
+    }
+
+    function openArticleFromHistory(newsId, stockId) {
+      closeNewsHistoryModal();
+      openArticleModal(newsId, stockId);
+    }
+    function openArticleModal(newsId, stockId) {
+      const s = ALL_STOCKS.find(item => item.id === stockId);
+      if (!s) return;
+
+      const newsList = getStockNewsList(stockId);
+      let news = newsList.find(n => n.id === newsId);
+      if (!news && pendingPopupNews && pendingPopupNews.id === newsId) {
+        news = pendingPopupNews;
+      }
+      if (!news) {
+        news = allNewsHistory.find(n => n.id === newsId);
+      }
+      if (!news) return;
+
+      currentActiveArticle = { ...news, stockId };
+
+      document.getElementById('articleMediaBadge').textContent = news.media;
+      document.getElementById('articleDateText').textContent = new Date().toLocaleTimeString('ko-KR', { hour: '2-digit', minute: '2-digit' }) + ' ' + news.time;
+      const typeBadge = document.getElementById('articleTypeBadge');
+      typeBadge.textContent = news.isUp ? '호재 기사 ▲' : '주의 기사 ▼';
+      typeBadge.className = `px-2 py-0.5 rounded text-[10px] font-black ${news.isUp ? 'bg-rose-100 text-rose-700 border border-rose-200' : 'bg-blue-100 text-blue-700 border border-blue-200'}`;
+
+      document.getElementById('articleModalTitle').textContent = news.title;
+      document.getElementById('articleStockIcon').textContent = s.icon;
+      document.getElementById('articleStockName').textContent = s.name;
+      document.getElementById('articleStockCode').textContent = s.id;
+      document.getElementById('articleStockPrice').textContent = `${s.price.toLocaleString()}원`;
+
+      const isUp = s.diff >= 0;
+      const rateEl = document.getElementById('articleStockRate');
+      rateEl.textContent = `${isUp ? '+' : ''}${s.diff.toLocaleString()} (${isUp ? '+' : ''}${s.rate}%)`;
+      rateEl.className = `text-[10px] font-bold num-font ${isUp ? 'text-rose-600' : 'text-blue-600'}`;
+
+      const bodyContainer = document.getElementById('articleModalBody');
+      bodyContainer.innerHTML = (news.paragraphs || [news.preview]).map(p => `
+        <p class="indent-2 leading-relaxed text-slate-800 text-xs">${p}</p>
+      `).join('');
+
+      document.getElementById('articleAnalystComment').textContent = news.analyst || `${s.name} 기업의 핵심 펀더멘털과 수급 동향에 주목해야 할 시점입니다.`;
+
+      document.getElementById('articleDetailModal').classList.remove('hidden');
+    }
+
+    function closeArticleModal() {
+      document.getElementById('articleDetailModal').classList.add('hidden');
+      currentActiveArticle = null;
+    }
+
+    function goToStockAndTrade() {
+      if (currentActiveArticle && currentActiveArticle.stockId) {
+        selectStock(currentActiveArticle.stockId);
+        switchDetailView('chart');
+      }
+      closeArticleModal();
+      const qtyInput = document.getElementById('orderQtyInput');
+      if (qtyInput) qtyInput.focus();
+    }
+
+    // 상단 뉴스 티커 업데이트 함수
+    function updateTopNews(news, stock) {
+      latestTopNews = { ...news, stockId: stock.id };
+      pushNewsToHistory(news, stock);
+      const badge = document.getElementById('topNewsBadge');
+      const text = document.getElementById('topNewsText');
+      const container = document.getElementById('topNewsContainer');
+      if (badge && text) {
+        badge.textContent = stock.name;
+        badge.className = `px-1.5 py-0.2 rounded text-[10px] font-black flex-shrink-0 ${news.isUp ? 'bg-rose-900/80 text-rose-300 border border-rose-700/60' : 'bg-blue-900/80 text-blue-300 border border-blue-700/60'}`;
+        text.textContent = news.title;
+      }
+      if (container) {
+        container.classList.add('bg-indigo-950/80', 'px-2', 'py-0.5', 'rounded-lg');
+        setTimeout(() => {
+          container.classList.remove('bg-indigo-950/80', 'px-2', 'py-0.5', 'rounded-lg');
+        }, 3000);
+      }
+    }
+
+    // 상단 뉴스 속보 클릭 시 전체 뉴스 아카이브 모달 열람
+    function handleTopNewsClick() {
+      openNewsHistoryModal();
+    }
+
+    // 토스트 알림 생성 함수
+    function showToast(msg, type = 'info') {
+      const container = document.getElementById('toastContainer');
+      if (!container) return;
+      const toast = document.createElement('div');
+      const bgClass = type === 'success' ? 'bg-emerald-600 text-white' : (type === 'warning' ? 'bg-amber-600 text-white' : (type === 'error' ? 'bg-rose-600 text-white' : 'bg-slate-900 text-white'));
+      toast.className = `px-3.5 py-2 rounded-xl text-xs font-bold shadow-lg transition-all duration-300 pointer-events-auto transform translate-y-2 opacity-0 flex items-center gap-2 ${bgClass}`;
+      toast.innerHTML = `<i class="fa-solid fa-circle-info text-xs"></i> <span>${msg}</span>`;
+      container.appendChild(toast);
+      requestAnimationFrame(() => {
+        toast.classList.remove('translate-y-2', 'opacity-0');
+      });
+      setTimeout(() => {
+        toast.classList.add('opacity-0', 'translate-y-2');
+        setTimeout(() => toast.remove(), 300);
+      }, 3500);
+    }
+
+    // 뉴스 발생 시 알림 및 상단 티커 갱신
+    function triggerNewsToast(news, stock) {
+      pendingPopupNews = { ...news, stockId: stock.id };
+      updateTopNews(news, stock);
+
+      // 우측 상단 플로팅 팝업
+      const popup = document.getElementById('newsToastPopup');
+      const badge = document.getElementById('popupStockBadge');
+      const title = document.getElementById('popupNewsTitle');
+      const summary = document.getElementById('popupNewsSummary');
+      if (popup && badge && title && summary) {
+        badge.textContent = stock.name;
+        title.textContent = news.title;
+        summary.textContent = news.preview || '';
+        popup.classList.remove('hidden');
+        clearTimeout(newsPopupTimer);
+        newsPopupTimer = setTimeout(() => {
+          closeNewsToastPopup();
+        }, 7000);
+      }
+    }
+
+    function handleNewsPopupClick() {
+      if (pendingPopupNews) {
+        closeNewsToastPopup();
+        openArticleModal(pendingPopupNews.id, pendingPopupNews.stockId);
+      }
+    }
+
+    function closeNewsToastPopup() {
+      const popup = document.getElementById('newsToastPopup');
+      if (popup) popup.classList.add('hidden');
+    }
+
+    // 거시경제 및 개별 쇼크 발동 함수
+    function applyShock(shock, isBroadcast = false) {
+      if (!shock) return;
+      ALL_STOCKS.forEach(s => {
+        if ((shock.targetSectors && shock.targetSectors.includes(s.cat)) || (shock.relatedCodes && shock.relatedCodes.includes(s.id))) {
+          s.price = Math.max(s.limitLow, Math.min(s.limitHigh, alignToKrxTick(s.price * (shock.rateMult || 1.1))));
+          s.diff = s.price - s.base;
+          s.rate = Number(((s.diff / s.base) * 100).toFixed(2));
+          s.history.push(s.price);
+          if (s.history.length > 50) s.history.shift();
+        }
+      });
+      selectStock(selectedStockId);
+      updateAssets();
+
+      // 속보 팝업 노출 및 뉴스 피드에도 동시 등록
+      const m = document.getElementById('breakingModal');
+      if (m) {
+        document.getElementById('breakingTitle').textContent = shock.title || '';
+        document.getElementById('breakingContent').textContent = shock.msg || '';
+        document.getElementById('breakingSummary').textContent = shock.summary || '';
+        const badge = document.getElementById('breakingBadge');
+        if (badge) {
+          badge.textContent = `${shock.shockSector || '거시경제'} · ${shock.isUp ? '호재 ▲' : '악재 ▼'} (${shock.rateStr || ''})`;
+          badge.className = `px-2 py-0.5 rounded text-[10px] font-black ${shock.isUp ? 'bg-rose-100 text-rose-700' : 'bg-blue-100 text-blue-700'}`;
+        }
+        const icon = document.getElementById('breakingIcon');
+        if (icon) {
+          icon.className = `w-9 h-9 rounded-xl ${shock.isUp ? 'bg-rose-600' : 'bg-blue-600'} text-white flex items-center justify-center text-sm font-black shadow-md animate-pulse`;
+        }
+        m.classList.remove('hidden');
+        setTimeout(closeBreakingModal, 10000);
+      }
+
+      // 관련 주요 종목 뉴스 리스트 및 전체 뉴스 아카이브에도 기사 추가
+      if (shock.relatedCodes && shock.relatedCodes.length > 0) {
+        shock.relatedCodes.forEach(code => {
+          const s = ALL_STOCKS.find(st => st.id === code);
+          const article = {
+            id: `macro_${code}_${Date.now()}`,
+            title: shock.title,
+            media: "KRX 긴급거시경제팀",
+            time: "방금 전",
+            isUp: shock.isUp,
+            preview: shock.msg,
+            paragraphs: [shock.msg, shock.summary || ''],
+            analyst: `거시경제 쇼크 발생으로 ${shock.shockSector || ''} 부문의 기업 가치에 즉각적인 시장 가격 변동(${shock.rateStr || ''})이 발생했습니다.`
+          };
+          if (!STOCK_SPECIFIC_NEWS[code]) STOCK_SPECIFIC_NEWS[code] = [];
+          STOCK_SPECIFIC_NEWS[code].unshift(article);
+          if (s) {
+            pushNewsToHistory(article, s);
+          }
+        });
+      }
+
+      if (isBroadcast) {
+        broadcastMsg('SHOCK_EVENT', { shock });
+      }
+    }
+
+    function closeBreakingModal() {
+      const m = document.getElementById('breakingModal');
+      if (m) m.classList.add('hidden');
+    }
+
+    const STOCK_SPECIFIC_NEWS = {};
+
+    function getStockNewsList(stockId) {
+      if (STOCK_SPECIFIC_NEWS[stockId] && STOCK_SPECIFIC_NEWS[stockId].length > 0) {
+        return STOCK_SPECIFIC_NEWS[stockId];
+      }
+      const s = ALL_STOCKS.find(item => item.id === stockId);
+      const name = s ? s.name : '해당 기업';
+      const defaultList = [
+        {
+          id: `default_${stockId}_1`,
+          title: `${name}, 차세대 핵심 제품 글로벌 수주 낭보... 실적 성장 가시화`,
+          media: "KRX 마켓포커스",
+          time: "1시간 전",
+          isUp: true,
+          preview: `${name}이(가) 해외 핵심 시장에서 대규모 공급 계약을 체결하며 업계 1위 경쟁력을 입증했습니다.`,
+          paragraphs: [
+            `${name}이(가) 올해 글로벌 핵심 시장에서 기술 경쟁력을 인정받아 대규모 공급 계약 체결에 성공했습니다.`,
+            "증권가에서는 이번 수주로 인해 차기 분기 영업이익률이 두 자릿수 이상 성장할 것으로 분석하고 있습니다."
+          ],
+          analyst: `견조한 수주 잔고와 고수익 제품 믹스 개선으로 목표주가 상향이 기대됩니다.`
+        },
+        {
+          id: `default_${stockId}_2`,
+          title: `${name}, 원가 절감 혁신 공정 도입 완료로 수익성 방어`,
+          media: "산업일보",
+          time: "3시간 전",
+          isUp: true,
+          preview: `디지털 자동화 및 에너지 효율화 공정 개편을 통해 생산 단가를 15% 감축하는 데 성공했습니다.`,
+          paragraphs: [
+            `${name}은(는) 전사적인 원가 혁신 TFT를 가동하여 주요 생산 라인의 효율을 극대화했다고 공시했습니다.`
+          ],
+          analyst: `고정비 부담 완화로 업황 둔화기에도 견조한 기초체력을 발휘할 것으로 전망됩니다.`
+        }
+      ];
+      STOCK_SPECIFIC_NEWS[stockId] = defaultList;
+      return defaultList;
+    }
+
+    function switchDetailView(view) {
+      currentDetailView = view;
+      const btnChart = document.getElementById('btnDetailTabChart');
+      const btnNews = document.getElementById('btnDetailTabNews');
+      const chartView = document.getElementById('detailChartView');
+      const newsView = document.getElementById('detailNewsView');
+
+      if (view === 'chart') {
+        if (btnChart) btnChart.className = 'px-2.5 py-1 rounded-lg text-xs font-black transition cursor-pointer bg-indigo-600 text-white shadow-2xs flex items-center gap-1.5';
+        if (btnNews) btnNews.className = 'px-2.5 py-1 rounded-lg text-xs font-black transition cursor-pointer bg-slate-100 text-slate-600 hover:bg-slate-200 flex items-center gap-1.5';
+        if (chartView) chartView.classList.remove('hidden');
+        if (newsView) newsView.classList.add('hidden');
+        setTimeout(drawChart, 50);
+      } else {
+        if (btnChart) btnChart.className = 'px-2.5 py-1 rounded-lg text-xs font-black transition cursor-pointer bg-slate-100 text-slate-600 hover:bg-slate-200 flex items-center gap-1.5';
+        if (btnNews) btnNews.className = 'px-2.5 py-1 rounded-lg text-xs font-black transition cursor-pointer bg-indigo-600 text-white shadow-2xs flex items-center gap-1.5';
+        if (chartView) chartView.classList.add('hidden');
+        if (newsView) newsView.classList.remove('hidden');
+        renderStockNews(selectedStockId);
+      }
+    }
+
+    function renderStockNews(stockId) {
+      const container = document.getElementById('stockNewsListContainer');
+      const nameLabel = document.getElementById('newsViewStockName');
+      const badge = document.getElementById('detailNewsCountBadge');
+      const s = ALL_STOCKS.find(item => item.id === stockId);
+      if (nameLabel && s) nameLabel.textContent = s.name;
+
+      const newsList = getStockNewsList(stockId);
+      if (badge) badge.textContent = newsList.length;
+      if (!container) return;
+
+      if (newsList.length === 0) {
+        container.innerHTML = '<div class="py-8 text-center text-xs text-slate-400">등록된 최신 뉴스가 없습니다.</div>';
+        return;
+      }
+
+      container.innerHTML = newsList.map(news => `
+        <div onclick="openArticleModal('${news.id}', '${stockId}')" class="p-2.5 bg-white hover:bg-indigo-50/70 transition cursor-pointer rounded-xl border border-slate-100 mb-1.5 flex flex-col gap-1 shadow-2xs group">
+          <div class="flex items-center justify-between text-[11px]">
+            <span class="font-bold text-slate-500">${news.media} • ${news.time}</span>
+            <span class="px-1.5 py-0.2 rounded font-black text-[10px] ${news.isUp ? 'bg-rose-100 text-rose-700' : 'bg-blue-100 text-blue-700'}">
+              ${news.isUp ? '호재 ▲' : '악재 ▼'}
+            </span>
+          </div>
+          <h4 class="text-xs font-black text-slate-900 group-hover:text-indigo-600 transition leading-snug">${news.title}</h4>
+          <p class="text-[11px] text-slate-600 line-clamp-2 leading-tight font-medium">${news.preview}</p>
+        </div>
+      `).join('');
+    }
+
+    let newsEngineTimer = null;
+    let lastNewsWasGood = false;
+
+    function initLiveNewsEngine() {
+      clearTimeout(newsEngineTimer);
+      scheduleNextNewsCycle();
+    }
+
+    function scheduleNextNewsCycle() {
+      const nextDelay = Math.floor(Math.random() * (20000 - 10000 + 1)) + 10000;
+      newsEngineTimer = setTimeout(() => {
+        if (marketState === 'ACTIVE') {
+          triggerAutomaticNewsCycle();
+        }
+        scheduleNextNewsCycle();
+      }, nextDelay);
+    }
+
+    function triggerAutomaticNewsCycle() {
+      const randStock = ALL_STOCKS[Math.floor(Math.random() * ALL_STOCKS.length)];
+      lastNewsWasGood = !lastNewsWasGood;
+      const isGood = lastNewsWasGood;
+
+      const newsData = generateDynamicStockNews(randStock, isGood);
+      const mult = isGood ? (1 + (Math.floor(Math.random() * 6) + 5) / 100) : (1 - (Math.floor(Math.random() * 6) + 5) / 100);
+      
+      randStock.price = Math.max(randStock.limitLow, Math.min(randStock.limitHigh, alignToKrxTick(randStock.price * mult)));
+      randStock.diff = randStock.price - randStock.base;
+      randStock.rate = Number(((randStock.diff / randStock.base) * 100).toFixed(2));
+      randStock.history.push(randStock.price);
+      if (randStock.history.length > 50) randStock.history.shift();
+
+      if (!STOCK_SPECIFIC_NEWS[randStock.id]) STOCK_SPECIFIC_NEWS[randStock.id] = [];
+      STOCK_SPECIFIC_NEWS[randStock.id].unshift(newsData);
+
+      triggerNewsToast(newsData, randStock);
+
+      if (selectedStockId === randStock.id) {
+        selectStock(randStock.id);
+        if (currentDetailView === 'news') {
+          renderStockNews(randStock.id);
+        }
+      }
+      updateAssets();
+
+      // 전체 학급 실시간 동기화
+      broadcastMsg('NEWS_EVENT', {
+        stockId: randStock.id,
+        news: newsData,
+        newPrice: randStock.price
+      });
+    }
+
+    function generateDynamicStockNews(stock, isGood) {
+      const now = new Date();
+      const timeStr = `${String(now.getHours()).padStart(2, '0')}:${String(now.getMinutes()).padStart(2, '0')}`;
+      const nowId = `news_${stock.id}_${Date.now()}`;
+
+      const goodHeadlines = [
+        `${stock.name}, 차세대 핵심 신제품 글로벌 대형 수주 쾌거`,
+        `${stock.name}, 사상 최대 분기 영업이익 어닝 서프라이즈 달성 공시`,
+        `${stock.name}, 글로벌 빅테크 기업과 대규모 기술 협력 파트너십 체결`,
+        `${stock.name}, 주주환원율 40% 상향 및 자사주 전량 소각 전격 결정`
+      ];
+      const badHeadlines = [
+        `${stock.name}, 주요 해외 공급망 병목으로 분기 납기 지연 우려 고조`,
+        `${stock.name}, 핵심 원자재 가격 급등으로 제품 마진율 일시적 압박`,
+        `${stock.name}, 글로벌 소비 둔화 여파로 신규 주문 발주량 일부 조정`,
+        `${stock.name}, 해외 품질 검역 규제 강화로 일시적 통관 지연 발생`
+      ];
+
+      const headline = isGood ? goodHeadlines[Math.floor(Math.random() * goodHeadlines.length)] : badHeadlines[Math.floor(Math.random() * badHeadlines.length)];
+      const mediaNames = ["KRX 경제브리프", "마켓투데이", "한국산업신문", "증권속보24", "글로벌비즈니스"];
+      const media = mediaNames[Math.floor(Math.random() * mediaNames.length)];
+
+      return {
+        id: nowId,
+        title: headline,
+        media: media,
+        time: timeStr,
+        isUp: isGood,
+        preview: isGood
+          ? `${stock.name}이(가) 시장의 예상을 뛰어넘는 성과를 내며 투자자들의 집중 매수세가 유입되고 있습니다.`
+          : `${stock.name}이(가) 일시적인 대외 변수로 인해 시장 관망세 및 단기 조정 압력을 받고 있습니다.`,
+        paragraphs: [
+          `${stock.name}에 대해 시장 전문가들은 이번 이슈가 주가 밸류에이션에 미치는 파급력을 주목하고 있습니다.`,
+          `회사 관계자는 본 사안에 대해 신속한 대응책을 가동하고 있으며, 주주가치 제고를 위해 최선을 다하겠다고 공식 입장을 밝혔습니다.`
+        ],
+        analyst: isGood
+          ? `단기적인 모멘텀을 넘어 중장기 실적 레벨업의 전환점이 될 것으로 평가됩니다.`
+          : `단기 변동성 확대가 불가피하나, 기업의 펀더멘털을 점검하며 분할 매매로 대응할 필요가 있습니다.`
+      };
+    }
+
+    let mqttClient = null;
+    let broadcastChannel = null;
+
+    function getMqttTopic() {
+      return `krx_class_sim_topic_${selectedClass.replace(/[^a-zA-Z0-9가-힣]/g, '')}`;
+    }
+
+    function initRealtimeSync() {
+      const p = new URLSearchParams(window.location.search);
+      const r = p.get('room');
+      if (r) {
+        selectedClass = r.trim();
+        const badge = document.getElementById('headerRoomBadge');
+        if (badge) badge.textContent = `${selectedClass} QR코드`;
+      }
+      const teacherParam = p.get('teacher');
+      if (teacherParam === '1') {
+        enterTeacherDirectly();
+      }
+
+      // 1. Local BroadcastChannel
+      try {
+        broadcastChannel = new BroadcastChannel('krx_channel_' + selectedClass);
+        broadcastChannel.onmessage = (e) => {
+          if (e.data && e.data.clientId !== myClientId) {
+            handleIncomingMessage(e.data);
+          }
+        };
+      } catch (e) {}
+
+      // 2. MQTT Client over WebSockets
+      if (window.mqtt) {
+        try {
+          const brokerUrl = 'wss://broker.hivemq.com:8884/mqtt';
+          mqttClient = mqtt.connect(brokerUrl, {
+            clientId: myClientId,
+            clean: true,
+            connectTimeout: 5000,
+            reconnectPeriod: 3000
+          });
+
+          mqttClient.on('connect', () => {
+            mqttClient.subscribe(getMqttTopic());
+            if (student.name && !isTeacherMode) {
+              broadcastMsg('STUDENT_JOIN', { student });
+            }
+          });
+
+          mqttClient.on('message', (topic, message) => {
+            try {
+              const data = JSON.parse(message.toString());
+              if (data && data.clientId !== myClientId) {
+                handleIncomingMessage(data);
+              }
+            } catch (err) {}
+          });
+        } catch (err) {}
+      }
+    }
+
+    function broadcastMsg(type, payload) {
+      const packet = {
+        clientId: myClientId,
+        type,
+        payload,
+        timestamp: Date.now()
+      };
+
+      if (broadcastChannel) {
+        try { broadcastChannel.postMessage(packet); } catch (e) {}
+      }
+
+      if (mqttClient && mqttClient.connected) {
+        try {
+          mqttClient.publish(getMqttTopic(), JSON.stringify(packet));
+        } catch (e) {}
+      }
+    }
+
+    function handleIncomingMessage(data) {
+      const { type, payload } = data || {};
+      if (!type) return;
+
+      if (type === 'STUDENT_JOIN' || type === 'STUDENT_UPDATE') {
+        if (payload && payload.student) {
+          const std = payload.student;
+          if (std.id === 'teacher_admin' || std.name === '선생님 (교사)') return;
+          
+          const idx = classroomStudents.findIndex(s => s.id === std.id);
+          if (idx >= 0) {
+            classroomStudents[idx] = { ...std, lastSeen: Date.now() };
+          } else {
+            classroomStudents.push({ ...std, lastSeen: Date.now() });
+            if (isTeacherMode) {
+              showToast(`[입장] ${std.classNum}반 ${std.studentNum}번 ${std.name} 학생 접속`, 'info');
+            }
+          }
+          updateTeacherRankingTable();
+
+          if (isTeacherMode && type === 'STUDENT_JOIN') {
+            broadcastMsg('MARKET_STATE_SYNC', {
+              marketState,
+              marketSeconds,
+              marketConfigMinutes,
+              seedMoney: SEED_MONEY
+            });
+          }
+        }
+      } else if (type === 'MARKET_STATE_SYNC') {
+        if (isTeacherMode) return;
+        if (payload) {
+          const oldState = marketState;
+          if (payload.marketState) marketState = payload.marketState;
+          if (typeof payload.marketSeconds === 'number') marketSeconds = payload.marketSeconds;
+          if (typeof payload.marketConfigMinutes === 'number') marketConfigMinutes = payload.marketConfigMinutes;
+          if (typeof payload.seedMoney === 'number') setSeedMoney(payload.seedMoney);
+          updateTimerDisplay();
+
+          if (oldState !== marketState) {
+            if (marketState === 'ACTIVE') showToast('정규장이 개장되었습니다! 실시간 거래가 가능합니다.', 'success');
+            else if (marketState === 'PAUSED') showToast('정규장이 일시정지되었습니다.', 'warning');
+            else if (marketState === 'CLOSED') checkMarketClosedModal();
+          }
+        }
+      } else if (type === 'SHOCK_EVENT' && payload?.shock) {
+        applyShock(payload.shock, false);
+      } else if (type === 'NEWS_EVENT' && payload?.news && payload?.stockId) {
+        const s = ALL_STOCKS.find(st => st.id === payload.stockId);
+        if (s) {
+          if (typeof payload.newPrice === 'number') {
+            s.price = payload.newPrice;
+            s.diff = s.price - s.base;
+            s.rate = Number(((s.diff / s.base) * 100).toFixed(2));
+            s.history.push(s.price);
+            if (s.history.length > 50) s.history.shift();
+          }
+          if (!STOCK_SPECIFIC_NEWS[s.id]) STOCK_SPECIFIC_NEWS[s.id] = [];
+          STOCK_SPECIFIC_NEWS[s.id].unshift(payload.news);
+          triggerNewsToast(payload.news, s);
+
+          if (selectedStockId === s.id) {
+            selectStock(selectedStockId);
+            if (currentDetailView === 'news') {
+              renderStockNews(selectedStockId);
+            }
+          }
+          updateAssets();
+        }
+      } else if (type === 'SUBSIDY_GIVE' && payload?.amount) {
+        if (!isTeacherMode && student.name) {
+          student.cash += payload.amount;
+          student.totalAsset += payload.amount;
+          updateAssets();
+          calculateOrderTotal();
+          renderPortfolio();
+          showToast(`선생님께서 전원 지원금 +${payload.amount.toLocaleString()}원을 지급하셨습니다!`, 'success');
+        }
+      } else if (type === 'KICK_STUDENT' && payload?.student) {
+        const target = payload.student;
+        if (student.id === target.id) {
+          alert(`[접속 제한] 선생님에 의해 퇴장(강퇴) 처리되었습니다.\n사유: ${payload.reason || '교사 조치'}`);
+          location.reload();
+          return;
+        }
+        classroomStudents = classroomStudents.filter(s => s.id !== target.id);
+        if (!bannedStudents.some(b => b.id === target.id)) {
+          bannedStudents.unshift({
+            id: target.id,
+            name: target.name,
+            classNum: target.classNum,
+            studentNum: target.studentNum,
+            reason: payload.reason || '교사 조치',
+            time: payload.time || new Date().toLocaleTimeString('ko-KR')
+          });
+        }
+        updateTeacherRankingTable();
+      } else if (type === 'UNBAN_STUDENT' && payload?.targetId) {
+        bannedStudents = bannedStudents.filter(b => b.id !== payload.targetId);
+        updateTeacherRankingTable();
+      }
+    }
+
+    function renderCategories() {
+      const container = document.getElementById('categoryContainer');
+      if (!container) return;
+      const cats = ['전체', '식품/외식', 'IT/반도체', '게임/엔터', '모빌리티', '뷰티/유통', '바이오', '2차전지', '금융/지주'];
+      container.innerHTML = cats.map(c => {
+        const id = c === '전체' ? 'ALL' : c;
+        const isSel = currentSector === id;
+        return `<button onclick="setSector('${id}')" class="px-2 py-0.5 rounded-lg text-[10px] font-black whitespace-nowrap transition cursor-pointer ${isSel ? 'bg-indigo-600 text-white' : 'bg-white text-slate-600 border border-slate-200'}">${c}</button>`;
+      }).join('');
+    }
+
+    function setSector(cat) {
+      currentSector = cat;
+      renderCategories();
+      renderStockList();
+    }
+
+    function handleSearch(term) {
+      searchTerm = term.toLowerCase().trim();
+      renderStockList();
+    }
+
+    function renderStockList() {
+      const container = document.getElementById('stockListContainer');
+      if (!container) return;
+      const filtered = ALL_STOCKS.filter(s => {
+        const matchCat = currentSector === 'ALL' || s.cat === currentSector;
+        const matchSearch = !searchTerm || s.name.toLowerCase().includes(searchTerm) || s.id.includes(searchTerm);
+        return matchCat && matchSearch;
+      });
+      const countBadge = document.getElementById('stockCountBadge');
+      if (countBadge) countBadge.textContent = `${filtered.length}개사`;
+
+      container.innerHTML = filtered.map(s => {
+        const isSel = s.id === selectedStockId;
+        const isUp = s.diff >= 0;
+        return `
+          <div onclick="selectStock('${s.id}')" class="px-3 py-2 flex items-center justify-between cursor-pointer transition ${isSel ? 'bg-indigo-50/90 border-l-4 border-indigo-600' : 'hover:bg-slate-50'}">
+            <div class="flex items-center gap-2 min-w-0 pr-1">
+              <span class="text-base flex-shrink-0">${s.icon}</span>
+              <div class="min-w-0">
+                <div class="flex items-center gap-1">
+                  <span class="text-xs font-black text-slate-900 truncate">${s.name}</span>
+                  <span class="text-[8px] font-bold text-slate-400 bg-slate-100 px-1 rounded">${s.cat}</span>
+                </div>
+                <div class="text-[9px] text-slate-400 truncate max-w-[140px]">${s.desc}</div>
+              </div>
+            </div>
+            <div class="text-right flex-shrink-0">
+              <div class="text-xs font-black text-slate-900 num-font">${s.price.toLocaleString()}원</div>
+              <div class="text-[10px] font-bold num-font ${isUp ? 'text-rose-600' : 'text-blue-600'}">${isUp ? '+' : ''}${s.rate}%</div>
+            </div>
+          </div>
+        `;
+      }).join('');
+    }
+
+    function selectStock(id) {
+      selectedStockId = id;
+      const s = ALL_STOCKS.find(st => st.id === id);
+      if (!s) return;
+      document.getElementById('detailIcon').textContent = s.icon;
+      document.getElementById('detailName').textContent = s.name;
+      document.getElementById('detailCode').textContent = s.id;
+      document.getElementById('detailCat').textContent = s.cat;
+      document.getElementById('detailDesc').textContent = s.desc;
+      const isUp = s.diff >= 0;
+      const pEl = document.getElementById('detailPrice');
+      pEl.textContent = `${s.price.toLocaleString()}원`;
+      pEl.className = `text-2xl md:text-3xl font-black num-font ${isUp ? 'text-rose-600' : 'text-blue-600'}`;
+      const rEl = document.getElementById('detailRate');
+      rEl.textContent = `${isUp ? '+' : ''}${s.diff.toLocaleString()} (${isUp ? '+' : ''}${s.rate}%)`;
+      rEl.className = `text-xs md:text-sm font-black num-font ${isUp ? 'text-rose-600' : 'text-blue-600'}`;
+      document.getElementById('detailBase').textContent = `기준 ${s.base.toLocaleString()}`;
+      document.getElementById('detailLimitHigh').textContent = `상 ${s.limitHigh.toLocaleString()}`;
+      document.getElementById('detailLimitLow').textContent = `하 ${s.limitLow.toLocaleString()}`;
+      const pct = Math.max(0, Math.min(100, ((s.price - s.limitLow) / (s.limitHigh - s.limitLow)) * 100));
+      document.getElementById('gaugeBar').style.width = `${pct}%`;
+      
+      renderStockList();
+      calculateOrderTotal();
+      if (currentDetailView === 'chart') {
+        drawChart();
+      } else {
+        renderStockNews(id);
+      }
+    }
+
+    function calculateOrderTotal() {
+      const s = ALL_STOCKS.find(st => st.id === selectedStockId);
+      if (!s) return;
+      const qty = parseInt(document.getElementById('orderQtyInput').value, 10) || 1;
+      document.getElementById('orderTotalCost').textContent = `${(s.price * qty).toLocaleString()}원`;
+      document.getElementById('orderCash').textContent = `${student.cash.toLocaleString()}원`;
+      const held = student.portfolio[s.id]?.qty || 0;
+      document.getElementById('orderHeld').textContent = `${held}주`;
+      const maxBuy = Math.floor(student.cash / s.price);
+      document.getElementById('orderMaxHint').textContent = `최대 매수: ${maxBuy}주`;
+    }
+
+    function changeQty(delta) {
+      const el = document.getElementById('orderQtyInput');
+      let val = (parseInt(el.value, 10) || 1) + delta;
+      if (val < 1) val = 1;
+      el.value = val;
+      calculateOrderTotal();
+    }
+
+    function setPercent(pct) {
+      const s = ALL_STOCKS.find(st => st.id === selectedStockId);
+      if (!s) return;
+      const maxBuy = Math.floor(student.cash / s.price);
+      let target = Math.floor(maxBuy * pct);
+      if (target < 1) target = 1;
+      document.getElementById('orderQtyInput').value = target;
+      calculateOrderTotal();
+    }
+
+    function executeTrade(type) {
+      if (marketState !== 'ACTIVE') {
+        showToast('장이 개장되지 않았습니다. 교사 모드에서 정규장을 개장해주세요.', 'warning');
+        return;
+      }
+      const s = ALL_STOCKS.find(st => st.id === selectedStockId);
+      if (!s) return;
+      const qty = parseInt(document.getElementById('orderQtyInput').value, 10) || 1;
+      const cost = s.price * qty;
+
+      if (type === 'BUY') {
+        if (student.cash < cost) {
+          showToast('매수 잔고가 부족합니다.', 'error');
+          return;
+        }
+        student.cash -= cost;
+        const cur = student.portfolio[s.id] || { qty: 0, avgPrice: 0 };
+        const newQty = cur.qty + qty;
+        const newAvg = Math.round((cur.avgPrice * cur.qty + cost) / newQty);
+        student.portfolio[s.id] = { qty: newQty, avgPrice: newAvg };
+        showToast(`[매수 체결] ${s.name} ${qty}주를 매수했습니다.`, 'success');
+      } else {
+        const cur = student.portfolio[s.id];
+        if (!cur || cur.qty < qty) {
+          showToast('매도할 보유 주식이 부족합니다.', 'error');
+          return;
+        }
+        student.cash += cost;
+        cur.qty -= qty;
+        if (cur.qty <= 0) delete student.portfolio[s.id];
+        showToast(`[매도 체결] ${s.name} ${qty}주를 매도했습니다.`, 'info');
+      }
+
+      student.tradeCount = (student.tradeCount || 0) + 1;
+      updateAssets();
+      calculateOrderTotal();
+      renderPortfolio();
+
+      if (!isTeacherMode && student.name) {
+        broadcastMsg('STUDENT_UPDATE', { student });
+      }
+    }
+
+    function updateAssets() {
+      let evalStock = 0;
+      for (const [id, item] of Object.entries(student.portfolio)) {
+        const s = ALL_STOCKS.find(st => st.id === id);
+        if (s) evalStock += s.price * item.qty;
+      }
+      student.totalAsset = student.cash + evalStock;
+      student.profitRate = Number((((student.totalAsset - SEED_MONEY) / SEED_MONEY) * 100).toFixed(2));
+      
+      const totalEl = document.getElementById('headerTotalAsset');
+      if (totalEl) totalEl.textContent = `${student.totalAsset.toLocaleString()}원`;
+      
+      const rateEl = document.getElementById('headerTotalRate');
+      if (rateEl) {
+        const isUp = student.profitRate >= 0;
+        rateEl.textContent = `${isUp ? '+' : ''}${student.profitRate}%`;
+        rateEl.className = `text-xs font-black num-font ${isUp ? 'text-rose-600' : 'text-blue-600'}`;
+      }
+    }
+
+    function renderPortfolio() {
+      const container = document.getElementById('portfolioList');
+      if (!container) return;
+      const entries = Object.entries(student.portfolio);
+      const countBadge = document.getElementById('portfolioCount');
+      if (countBadge) countBadge.textContent = `${entries.length}종목`;
+
+      if (!entries.length) {
+        container.innerHTML = '<div class="py-6 text-center text-slate-400 text-xs">보유 종목이 없습니다.</div>';
+        return;
+      }
+
+      container.innerHTML = entries.map(([id, item]) => {
+        const s = ALL_STOCKS.find(st => st.id === id);
+        if (!s) return '';
+        const evalVal = s.price * item.qty;
+        const diff = evalVal - (item.avgPrice * item.qty);
+        const rate = Number(((diff / (item.avgPrice * item.qty)) * 100).toFixed(2));
+        const isUp = rate >= 0;
+        return `
+          <div onclick="selectStock('${s.id}')" class="py-2 px-1 flex items-center justify-between hover:bg-slate-50 cursor-pointer">
+            <div>
+              <div class="flex items-center gap-1 font-black text-xs text-slate-900">${s.name} <span class="text-[10px] text-slate-400 font-mono">${item.qty}주</span></div>
+              <div class="text-[10px] text-slate-400">평균 ${item.avgPrice.toLocaleString()}원</div>
+            </div>
+            <div class="text-right">
+              <div class="text-xs font-black text-slate-900 num-font">${evalVal.toLocaleString()}원</div>
+              <div class="text-[10px] font-bold num-font ${isUp ? 'text-rose-600' : 'text-blue-600'}">${isUp ? '+' : ''}${rate}%</div>
+            </div>
+          </div>
+        `;
+      }).join('');
+    }
+
+    function checkMarketClosedModal() {
+      const modal = document.getElementById('marketClosedModal');
+      if (!modal) return;
+      document.getElementById('closedModalStudentName').textContent = student.name ? `${student.name} (3-${student.classNum}-${student.studentNum})` : '학생';
+      document.getElementById('closedModalSeed').textContent = `${SEED_MONEY.toLocaleString()}원`;
+      document.getElementById('closedModalTotalAsset').textContent = `${student.totalAsset.toLocaleString()}원`;
+      
+      const isUp = student.profitRate >= 0;
+      const rateEl = document.getElementById('closedModalProfitRate');
+      rateEl.textContent = `${isUp ? '+' : ''}${student.profitRate}%`;
+      rateEl.className = `text-base font-mono font-black num-font ${isUp ? 'text-rose-600' : 'text-blue-600'}`;
+      
+      document.getElementById('closedModalTrades').textContent = `${student.tradeCount || 0}회`;
+      modal.classList.remove('hidden');
+    }
+
+    function closeMarketClosedModal() {
+      const modal = document.getElementById('marketClosedModal');
+      if (modal) modal.classList.add('hidden');
+    }
+
+    function initTimers() {
+      // 주가 틱
+      setInterval(() => {
+        if (marketState !== 'ACTIVE') return;
+        ALL_STOCKS.forEach(s => {
+          const tick = getKrxTickSize(s.price);
+          const dir = (Math.random() - 0.495) > 0 ? 1 : -1;
+          s.price = Math.max(s.limitLow, Math.min(s.limitHigh, s.price + tick * dir));
+          s.diff = s.price - s.base;
+          s.rate = Number(((s.diff / s.base) * 100).toFixed(2));
+          s.history.push(s.price);
+          if (s.history.length > 50) s.history.shift();
+        });
+        selectStock(selectedStockId);
+        updateAssets();
+      }, 1800);
+
+      // 장 타이머
+      setInterval(() => {
+        if (marketState === 'ACTIVE') {
+          if (marketSeconds > 0) {
+            marketSeconds--;
+            updateTimerDisplay();
+          } else {
+            marketState = 'CLOSED';
+            updateTimerDisplay();
+            checkMarketClosedModal();
+            if (isTeacherMode) {
+              broadcastMsg('MARKET_STATE_SYNC', { marketState: 'CLOSED', marketSeconds: 0, marketConfigMinutes, seedMoney: SEED_MONEY });
+            }
+          }
+        }
+      }, 1000);
+
+      // 거시경제 자동 쇼크 20~30분 주기
+      setInterval(() => {
+        if (marketState === 'ACTIVE' && isAutoShockEnabled && isTeacherMode) {
+          if (randomShockSecondsLeft > 0) {
+            randomShockSecondsLeft--;
+            updateRandomCountdownDisplay();
+          } else {
+            triggerRandomShockAuto();
+          }
+        }
+      }, 1000);
+    }
+
+    function updateTimerDisplay() {
+      const m = Math.floor(marketSeconds / 60);
+      const s = marketSeconds % 60;
+      const str = `${String(m).padStart(2, '0')}:${String(s).padStart(2, '0')}`;
+      const el = document.getElementById('marketTimerText');
+      if (el) el.textContent = str;
+      const stat = document.getElementById('marketStatusText');
+      if (stat) stat.textContent = marketState === 'ACTIVE' ? '정규장 거래중' : (marketState === 'PAUSED' ? '일시정지' : (marketState === 'CLOSED' ? '정규장 마감' : '개장 대기'));
+      const dot = document.getElementById('marketDot');
+      if (dot) {
+        dot.className = marketState === 'ACTIVE' ? 'w-2 h-2 rounded-full bg-emerald-500 animate-ping' : (marketState === 'PAUSED' ? 'w-2 h-2 rounded-full bg-amber-500 animate-pulse' : 'w-2 h-2 rounded-full bg-slate-400');
+      }
+    }
+
+    function updateRandomCountdownDisplay() {
+      const m = Math.floor(randomShockSecondsLeft / 60);
+      const s = randomShockSecondsLeft % 60;
+      const el = document.getElementById('teacherRandomCountdown');
+      if (el) el.textContent = `${String(m).padStart(2, '0')}:${String(s).padStart(2, '0')}`;
+    }
+
+    function toggleAutoShock() {
+      isAutoShockEnabled = !isAutoShockEnabled;
+      const btn = document.getElementById('btnToggleAutoShock');
+      const dot = document.getElementById('dotAutoShock');
+      if (btn && dot) {
+        if (isAutoShockEnabled) {
+          btn.textContent = '자동 발생: ON';
+          btn.className = 'px-3 py-1 rounded-xl text-xs font-black transition active:scale-95 bg-emerald-600 text-white cursor-pointer';
+          dot.className = 'w-2.5 h-2.5 rounded-full bg-rose-500 animate-ping';
+        } else {
+          btn.textContent = '자동 발생: OFF (꺼짐)';
+          btn.className = 'px-3 py-1 rounded-xl text-xs font-black transition active:scale-95 bg-slate-200 text-slate-600 hover:bg-slate-300 cursor-pointer';
+          dot.className = 'w-2.5 h-2.5 rounded-full bg-slate-400';
+        }
+      }
+    }
+
+    function triggerRandomShockAuto() {
+      const isGood = Math.random() < 0.5;
+      const pool = isGood ? GOOD_SHOCKS : BAD_SHOCKS;
+      const chosen = pool[Math.floor(Math.random() * pool.length)];
+      applyShock(chosen, true);
+      randomShockSecondsLeft = Math.floor(Math.random() * (1800 - 1200 + 1)) + 1200;
+    }
+
+    function triggerImmediateRandomShock() {
+      triggerRandomShockAuto();
+    }
+
+    function teacherToggleMarket() {
+      marketState = marketState === 'ACTIVE' ? 'PAUSED' : 'ACTIVE';
+      const btn = document.getElementById('btnTeacherMarketToggle');
+      if (btn) {
+        btn.innerHTML = marketState === 'ACTIVE' ? '<i class="fa-solid fa-pause"></i> <span>장 일시정지</span>' : '<i class="fa-solid fa-play"></i> <span>거래 재개</span>';
+      }
+      updateTimerDisplay();
+      broadcastMsg('MARKET_STATE_SYNC', { marketState, marketSeconds, marketConfigMinutes, seedMoney: SEED_MONEY });
+    }
+
+    function teacherRestartMarket() {
+      marketSeconds = marketConfigMinutes * 60;
+      marketState = 'WAITING';
+      updateTimerDisplay();
+      broadcastMsg('MARKET_STATE_SYNC', { marketState: 'WAITING', marketSeconds, marketConfigMinutes, seedMoney: SEED_MONEY });
+      showToast(`${marketConfigMinutes}분으로 장 타이머를 재설정했습니다.`, 'info');
+    }
+
+    function setMinutes(m) {
+      marketConfigMinutes = Math.max(1, Math.min(60, m));
+      document.getElementById('teacherMinutesInput').value = marketConfigMinutes;
+      document.getElementById('teacherResetText').textContent = `${marketConfigMinutes}분 재설정`;
+      if (marketState === 'WAITING' || marketState === 'CLOSED') {
+        marketSeconds = marketConfigMinutes * 60;
+        updateTimerDisplay();
+      }
+    }
+    function adjustMinutes(d) { setMinutes(marketConfigMinutes + d); }
+    function onMinutesInputChange(v) { setMinutes(parseInt(v, 10) || 10); }
+
+    function setSeedMoney(amount) {
+      const clamped = Math.max(100000, amount);
+      SEED_MONEY = clamped;
+      const inputEl = document.getElementById('teacherSeedInput');
+      if (inputEl) inputEl.value = clamped;
+      const dispEl = document.getElementById('teacherSeedDisplay');
+      if (dispEl) dispEl.textContent = '현재 설정: ' + clamped.toLocaleString() + '원';
+      const loginDisp = document.getElementById('loginSeedDisplay');
+      if (loginDisp) loginDisp.textContent = clamped.toLocaleString() + '원';
+
+      if (student.tradeCount === 0 && Object.keys(student.portfolio).length === 0) {
+        student.cash = clamped;
+        student.totalAsset = clamped;
+        student.profitRate = 0;
+        updateAssets();
+        calculateOrderTotal();
+      }
+
+      if (isTeacherMode) {
+        broadcastMsg('MARKET_STATE_SYNC', { marketState, marketSeconds, marketConfigMinutes, seedMoney: clamped });
+      }
+    }
+    function onSeedInputChange(v) { setSeedMoney(parseInt(v, 10) || 100000); }
+
+    function teacherGiveSubsidy(amt) {
+      classroomStudents.forEach(s => {
+        s.cash = (s.cash || 0) + amt;
+        s.totalAsset = (s.totalAsset || 0) + amt;
+      });
+      updateTeacherRankingTable();
+      broadcastMsg('SUBSIDY_GIVE', { amount: amt });
+      showToast(`모든 학생에게 전원 지원금 +${amt.toLocaleString()}원을 지급했습니다.`, 'success');
+    }
+
+    function toggleTeacherBannedView(showBanned) {
+      showBannedView = showBanned;
+      const btnStudents = document.getElementById('btnRankingViewStudents');
+      const btnBanned = document.getElementById('btnRankingViewBanned');
+      if (btnStudents) {
+        btnStudents.className = !showBanned
+          ? 'px-2.5 py-1 rounded-lg text-xs font-black transition cursor-pointer bg-indigo-600 text-white'
+          : 'px-2.5 py-1 rounded-lg text-xs font-black transition cursor-pointer bg-slate-100 text-slate-600 hover:bg-slate-200';
+      }
+      if (btnBanned) {
+        btnBanned.className = showBanned
+          ? 'px-2.5 py-1 rounded-lg text-xs font-black transition cursor-pointer bg-rose-600 text-white'
+          : 'px-2.5 py-1 rounded-lg text-xs font-black transition cursor-pointer bg-slate-100 text-slate-600 hover:bg-slate-200';
+      }
+      const headerRow = document.getElementById('teacherTableHeaderRow');
+      if (headerRow) {
+        if (showBanned) {
+          headerRow.innerHTML = `
+            <th class="py-2 px-3">학번</th>
+            <th class="py-2 px-3">이름</th>
+            <th class="py-2 px-3">강퇴 시각</th>
+            <th class="py-2 px-3" colspan="3">강퇴 사유</th>
+            <th class="py-2 px-3 text-center">조치</th>
+          `;
+        } else {
+          headerRow.innerHTML = `
+            <th class="py-2 px-3">순위</th>
+            <th class="py-2 px-3">학번</th>
+            <th class="py-2 px-3">이름</th>
+            <th class="py-2 px-3 text-right">총 평가자산</th>
+            <th class="py-2 px-3 text-right">수익률</th>
+            <th class="py-2 px-3 text-center">보유/거래</th>
+            <th class="py-2 px-3 text-center">상태</th>
+            <th class="py-2 px-3 text-center">관리</th>
+          `;
+        }
+      }
+      updateTeacherRankingTable();
+    }
+
+    function kickStudent(id, name, classNum, studentNum) {
+      const reason = prompt(`[${name}] 학생을 강퇴하시겠습니까?\n사유를 입력하세요:`, '수업 방해 및 부정 거래') || '교사 조치';
+      const now = new Date();
+      const timeStr = `${String(now.getHours()).padStart(2, '0')}:${String(now.getMinutes()).padStart(2, '0')}:${String(now.getSeconds()).padStart(2, '0')}`;
+      const bannedInfo = { id, name, classNum, studentNum, reason, time: timeStr };
+
+      if (!bannedStudents.some(b => b.id === id)) {
+        bannedStudents.unshift(bannedInfo);
+      }
+      classroomStudents = classroomStudents.filter(s => s.id !== id);
+      updateTeacherRankingTable();
+
+      broadcastMsg('KICK_STUDENT', { student: { id, name, classNum, studentNum }, reason, time: timeStr });
+      showToast(`[${name}] 학생을 강퇴 처리했습니다.`, 'error');
+    }
+
+    function unbanStudent(id) {
+      bannedStudents = bannedStudents.filter(b => b.id !== id);
+      updateTeacherRankingTable();
+      broadcastMsg('UNBAN_STUDENT', { targetId: id });
+      showToast('차단이 해제되었습니다.', 'success');
+    }
+
+    function openStudentDetailModal(studentId) {
+      const target = classroomStudents.find(s => s.id === studentId);
+      if (!target) return;
+      document.getElementById('modalStudentName').textContent = target.name;
+      document.getElementById('modalStudentClass').textContent = `3학년 ${target.classNum}반 ${target.studentNum}번`;
+      document.getElementById('modalStudentCash').textContent = `${(target.cash || 0).toLocaleString()}원`;
+      document.getElementById('modalStudentAsset').textContent = `${(target.totalAsset || 0).toLocaleString()}원`;
+      
+      const isUp = (target.profitRate || 0) >= 0;
+      const rateEl = document.getElementById('modalStudentRate');
+      rateEl.textContent = `${isUp ? '+' : ''}${target.profitRate || 0}%`;
+      rateEl.className = `text-xs font-black num-font mt-0.5 ${isUp ? 'text-rose-600' : 'text-blue-600'}`;
+      
+      document.getElementById('modalStudentTradeCount').textContent = `거래 횟수: ${target.tradeCount || 0}회`;
+
+      const container = document.getElementById('modalStudentPortfolioList');
+      const entries = Object.entries(target.portfolio || {});
+      if (!entries.length) {
+        container.innerHTML = '<div class="py-4 text-center text-xs text-slate-400">보유 종목 없음 (전액 현금)</div>';
+      } else {
+        container.innerHTML = entries.map(([code, item]) => {
+          const s = ALL_STOCKS.find(st => st.id === code);
+          if (!s) return '';
+          const evalVal = s.price * item.qty;
+          const profit = evalVal - (item.avgPrice * item.qty);
+          const rate = Number(((profit / (item.avgPrice * item.qty)) * 100).toFixed(2));
+          const isUpItem = rate >= 0;
+          return `
+            <div class="py-1.5 flex items-center justify-between text-xs">
+              <div>
+                <span class="font-black text-slate-900">${s.name}</span>
+                <span class="text-[10px] text-slate-400"> ${item.qty}주 (평단 ${item.avgPrice.toLocaleString()}원)</span>
+              </div>
+              <div class="text-right">
+                <span class="font-bold text-slate-800 num-font">${evalVal.toLocaleString()}원</span>
+                <span class="text-[10px] font-bold num-font ${isUpItem ? 'text-rose-600' : 'text-blue-600'}"> (${isUpItem ? '+' : ''}${rate}%)</span>
+              </div>
+            </div>
+          `;
+        }).join('');
+      }
+
+      document.getElementById('studentDetailModal').classList.remove('hidden');
+    }
+
+    function closeStudentDetailModal() {
+      document.getElementById('studentDetailModal').classList.add('hidden');
+    }
+
+    function updateTeacherRankingTable() {
+      const tbody = document.getElementById('teacherRankingTbody');
+      if (!tbody) return;
+
+      const studentCountBadge = document.getElementById('teacherStudentCount');
+      const headerCount = document.getElementById('headerLiveCount');
+      const studentTabBadge = document.getElementById('teacherStudentTabCount');
+      const bannedTabBadge = document.getElementById('teacherBannedTabCount');
+
+      const validStudents = classroomStudents.filter(s => s.name !== '선생님 (교사)' && !s.id?.startsWith('teacher_'));
+      if (studentCountBadge) studentCountBadge.textContent = `${validStudents.length}명`;
+      if (headerCount) headerCount.textContent = validStudents.length;
+      if (studentTabBadge) studentTabBadge.textContent = validStudents.length;
+      if (bannedTabBadge) bannedTabBadge.textContent = bannedStudents.length;
+
+      if (showBannedView) {
+        if (bannedStudents.length === 0) {
+          tbody.innerHTML = `
+            <tr>
+              <td colspan="7" class="py-12 text-center text-slate-400">
+                <i class="fa-solid fa-user-check text-2xl text-slate-300 mb-2"></i>
+                <div class="text-xs font-black text-slate-600">강퇴된 학생이 없습니다.</div>
+              </td>
+            </tr>
+          `;
+          return;
+        }
+        tbody.innerHTML = bannedStudents.map(b => `
+          <tr class="hover:bg-rose-50/50 transition">
+            <td class="py-2.5 px-3 font-mono text-slate-500 font-bold">3-${b.classNum}-${b.studentNum}</td>
+            <td class="py-2.5 px-3 font-black text-slate-900">${b.name}</td>
+            <td class="py-2.5 px-3 font-mono text-rose-600 text-xs">${b.time}</td>
+            <td class="py-2.5 px-3 text-slate-700 text-xs font-medium" colspan="3">${b.reason}</td>
+            <td class="py-2.5 px-3 text-center">
+              <button onclick="unbanStudent('${b.id}')" class="px-2.5 py-1 rounded-lg bg-emerald-50 hover:bg-emerald-100 text-emerald-700 font-black text-[11px] border border-emerald-200 cursor-pointer">차단 해제</button>
+            </td>
+          </tr>
+        `).join('');
+        return;
+      }
+
+      if (validStudents.length === 0) {
+        tbody.innerHTML = `
+          <tr>
+            <td colspan="8" class="py-12 text-center text-slate-400">
+              <div class="flex flex-col items-center justify-center gap-2">
+                <div class="w-10 h-10 rounded-full bg-slate-100 flex items-center justify-center text-slate-400 text-lg">
+                  <i class="fa-solid fa-users"></i>
+                </div>
+                <div class="text-xs font-black text-slate-700">현재 접속한 학생이 없습니다.</div>
+                <div class="text-[11px] text-slate-400 max-w-xs leading-normal">
+                  선생님은 시장 관제자로서 학생 명단 및 랭킹에서 자동 제외됩니다.
+                </div>
+                <button onclick="openQRModal()" class="mt-2 px-3 py-1.5 rounded-xl bg-indigo-600 hover:bg-indigo-700 text-white font-black text-xs shadow-xs transition cursor-pointer flex items-center gap-1.5">
+                  <i class="fa-solid fa-qrcode"></i>
+                  <span>반별 QR코드 열기</span>
+                </button>
+              </div>
+            </td>
+          </tr>
+        `;
+        return;
+      }
+
+      validStudents.sort((a, b) => (b.totalAsset || 0) - (a.totalAsset || 0));
+
+      tbody.innerHTML = validStudents.map((s, idx) => {
+        const isUp = (s.profitRate || 0) >= 0;
+        let rankBadge = `${idx + 1}위`;
+        if (idx === 0) rankBadge = '🥇 1위';
+        else if (idx === 1) rankBadge = '🥈 2위';
+        else if (idx === 2) rankBadge = '🥉 3위';
+
+        const portCount = s.portfolio ? Object.keys(s.portfolio).length : 0;
+        const trades = s.tradeCount || 0;
+        const isOnline = Date.now() - (s.lastSeen || 0) < 15000;
+
+        return `
+          <tr class="hover:bg-slate-50 transition cursor-pointer" onclick="openStudentDetailModal('${s.id}')">
+            <td class="py-2 px-3 font-black text-slate-800">${rankBadge}</td>
+            <td class="py-2 px-3 font-mono text-slate-500 font-bold">3-${s.classNum}-${s.studentNum}</td>
+            <td class="py-2 px-3 font-black text-slate-900 flex items-center gap-1.5">
+              <span>${s.name}</span>
+              <i class="fa-solid fa-magnifying-glass text-[10px] text-slate-400" title="클릭 시 포트폴리오 상세 조회"></i>
+            </td>
+            <td class="py-2 px-3 text-right font-black num-font text-slate-800">${(s.totalAsset || 0).toLocaleString()}원</td>
+            <td class="py-2 px-3 text-right font-black num-font ${isUp ? 'text-rose-600' : 'text-blue-600'}">
+              ${isUp ? '+' : ''}${s.profitRate || 0}%
+            </td>
+            <td class="py-2 px-3 text-center text-slate-500 font-mono text-[11px]">
+              ${portCount}종목 / ${trades}회
+            </td>
+            <td class="py-2 px-3 text-center">
+              <span class="inline-flex items-center gap-1 px-1.5 py-0.5 rounded text-[10px] font-bold ${isOnline ? 'bg-emerald-50 text-emerald-700' : 'bg-slate-100 text-slate-500'}">
+                <span class="w-1.5 h-1.5 rounded-full ${isOnline ? 'bg-emerald-500' : 'bg-slate-400'}"></span>
+                ${isOnline ? '접속중' : '대기'}
+              </span>
+            </td>
+            <td class="py-2 px-3 text-center" onclick="event.stopPropagation()">
+              <button onclick="kickStudent('${s.id}', '${s.name}', ${s.classNum}, ${s.studentNum})" class="px-2 py-0.5 rounded-lg bg-rose-50 hover:bg-rose-100 text-rose-700 font-black text-[11px] border border-rose-200 cursor-pointer">
+                강퇴
+              </button>
+            </td>
+          </tr>
+        `;
+      }).join('');
+    }
+
+    function openLoginModal() {
+      document.getElementById('loginModal').classList.remove('hidden');
+    }
+
+    function handleLoginSubmit(e) {
+      e.preventDefault();
+      const c = parseInt(document.getElementById('inputClass').value, 10) || 1;
+      const n = parseInt(document.getElementById('inputNumber').value, 10) || 1;
+      const name = document.getElementById('inputName').value.trim();
+      if (!name) return;
+
+      const newId = `std_${c}_${n}_${encodeURIComponent(name)}`;
+      if (bannedStudents.some(b => b.id === newId)) {
+        alert('강퇴 처리된 계정입니다. 선생님께 문의하세요.');
+        return;
+      }
+
+      student.id = newId;
+      student.classNum = c;
+      student.studentNum = n;
+      student.name = name;
+      student.cash = SEED_MONEY;
+      student.totalAsset = SEED_MONEY;
+      student.profitRate = 0;
+      student.portfolio = {};
+      student.tradeCount = 0;
+      student.lastSeen = Date.now();
+
+      document.getElementById('headerStudentName').textContent = name;
+      document.getElementById('headerStudentClass').textContent = `3학년 ${c}반 ${n}번`;
+      document.getElementById('loginModal').classList.add('hidden');
+      updateAssets();
+
+      const idx = classroomStudents.findIndex(s => s.id === newId);
+      if (idx >= 0) classroomStudents[idx] = { ...student };
+      else classroomStudents.push({ ...student });
+      updateTeacherRankingTable();
+
+      broadcastMsg('STUDENT_JOIN', { student });
+      showToast(`${name} 학생으로 로그인되었습니다.`, 'success');
+    }
+
+    function enterTeacherDirectly() {
+      isTeacherMode = true;
+      document.getElementById('loginModal').classList.add('hidden');
+      student.name = '선생님 (교사)';
+      student.id = 'teacher_admin';
+      const nameEl = document.getElementById('headerStudentName');
+      const classEl = document.getElementById('headerStudentClass');
+      if (nameEl) nameEl.textContent = '선생님 (교사)';
+      if (classEl) classEl.textContent = '실시간 관제자 (평가제외)';
+      
+      const qrBtn = document.getElementById('headerQRBtn');
+      if (qrBtn) qrBtn.style.display = 'flex';
+      
+      classroomStudents = classroomStudents.filter(s => s.name !== '선생님 (교사)' && !s.id?.startsWith('teacher_'));
+      updateTeacherRankingTable();
+      toggleTeacherModal(true);
+      showToast('교사 관제 모드로 전환되었습니다.', 'info');
+    }
+
+    function toggleTeacherModal(show) {
+      const modal = document.getElementById('teacherModal');
+      if (modal) modal.classList.toggle('hidden', !show);
+      if (show) {
+        isTeacherMode = true;
+        const qrBtn = document.getElementById('headerQRBtn');
+        if (qrBtn) qrBtn.style.display = 'flex';
+        updateTeacherRankingTable();
+      }
+    }
+
+    let secretCount = 0;
+    let secretTimer = null;
+    function handleSecretTeacherTrigger() {
+      secretCount++;
+      clearTimeout(secretTimer);
+      secretTimer = setTimeout(() => { secretCount = 0; }, 1800);
+      if (secretCount >= 5) {
+        secretCount = 0;
+        enterTeacherDirectly();
+      }
+    }
+
+    function initChart() {
+      const canvas = document.getElementById('stockCanvas');
+      window.addEventListener('resize', () => {
+        if (currentDetailView === 'chart') drawChart();
+      });
+      setTimeout(drawChart, 100);
+    }
+
+    function drawChart() {
+      const canvas = document.getElementById('stockCanvas');
+      if (!canvas) return;
+      const rect = canvas.getBoundingClientRect();
+      if (rect.width === 0 || rect.height === 0) return;
+
+      const dpr = window.devicePixelRatio || 1;
+      canvas.width = rect.width * dpr;
+      canvas.height = rect.height * dpr;
+      const ctx = canvas.getContext('2d');
+      ctx.scale(dpr, dpr);
+      const w = rect.width;
+      const h = rect.height;
+      ctx.clearRect(0, 0, w, h);
+
+      const s = ALL_STOCKS.find(st => st.id === selectedStockId);
+      if (!s || !s.history || s.history.length === 0) return;
+
+      const pad = { top: 20, bottom: 24, left: 16, right: 75 };
+      const chartW = w - pad.left - pad.right;
+      const chartH = h - pad.top - pad.bottom;
+      const data = s.history;
+      const allVals = [...data, s.base];
+      const maxVal = Math.max(...allVals) * 1.002;
+      const minVal = Math.min(...allVals) * 0.998;
+      const range = maxVal - minVal || 1;
+
+      const getY = v => pad.top + chartH - ((v - minVal) / range) * chartH;
+      const isUp = s.diff >= 0;
+      const color = isUp ? '#e11d48' : '#2563eb';
+      const bgColor = isUp ? 'rgba(225, 29, 72, 0.08)' : 'rgba(37, 99, 235, 0.08)';
+
+      // 보조 그리드 라인
+      ctx.strokeStyle = '#f1f5f9';
+      ctx.lineWidth = 1;
+      for (let i = 0; i <= 4; i++) {
+        const y = pad.top + (chartH / 4) * i;
+        ctx.beginPath();
+        ctx.moveTo(pad.left, y);
+        ctx.lineTo(pad.left + chartW, y);
+        ctx.stroke();
+      }
+
+      // 기준가 점선 라인
+      const baseY = getY(s.base);
+      ctx.save();
+      ctx.setLineDash([4, 4]);
+      ctx.strokeStyle = '#94a3b8';
+      ctx.lineWidth = 1;
+      ctx.beginPath();
+      ctx.moveTo(pad.left, baseY);
+      ctx.lineTo(pad.left + chartW, baseY);
+      ctx.stroke();
+      ctx.restore();
+
+      // 차트 배경 영역 채우기
+      ctx.beginPath();
+      data.forEach((v, i) => {
+        const x = pad.left + (i / Math.max(1, data.length - 1)) * chartW;
+        const y = getY(v);
+        if (i === 0) ctx.moveTo(x, y);
+        else ctx.lineTo(x, y);
+      });
+      ctx.lineTo(pad.left + chartW, pad.top + chartH);
+      ctx.lineTo(pad.left, pad.top + chartH);
+      ctx.closePath();
+      ctx.fillStyle = bgColor;
+      ctx.fill();
+
+      // 틱 차트 라인
+      ctx.beginPath();
+      data.forEach((v, i) => {
+        const x = pad.left + (i / Math.max(1, data.length - 1)) * chartW;
+        const y = getY(v);
+        if (i === 0) ctx.moveTo(x, y);
+        else ctx.lineTo(x, y);
+      });
+      ctx.strokeStyle = color;
+      ctx.lineWidth = 2.5;
+      ctx.lineJoin = 'round';
+      ctx.lineCap = 'round';
+      ctx.stroke();
+
+      // 현재가 마커 및 가격 라벨
+      const lastX = pad.left + chartW;
+      const lastY = getY(s.price);
+
+      ctx.beginPath();
+      ctx.arc(lastX, lastY, 4, 0, Math.PI * 2);
+      ctx.fillStyle = color;
+      ctx.fill();
+
+      ctx.fillStyle = color;
+      ctx.font = 'bold 11px Pretendard, monospace';
+      ctx.fillText(`${s.price.toLocaleString()}원`, lastX + 6, lastY + 4);
+    }
+
+    function switchTeacherTab(tab) {
+      const panelR = document.getElementById('panelTeacherRanking');
+      const panelS = document.getElementById('panelTeacherSector');
+      const panelM = document.getElementById('panelTeacherMacro');
+      if (panelR) panelR.classList.toggle('hidden', tab !== 'ranking');
+      if (panelS) panelS.classList.toggle('hidden', tab !== 'sector');
+      if (panelM) panelM.classList.toggle('hidden', tab !== 'macro');
+
+      const btnR = document.getElementById('btnTabTeacherRanking');
+      const btnS = document.getElementById('btnTabTeacherSector');
+      const btnM = document.getElementById('btnTabTeacherMacro');
+
+      if (btnR) {
+        btnR.className = tab === 'ranking'
+          ? 'flex-1 py-1.5 rounded-xl transition flex items-center justify-center gap-1.5 bg-white text-indigo-700 shadow-2xs cursor-pointer'
+          : 'flex-1 py-1.5 rounded-xl transition flex items-center justify-center gap-1.5 text-slate-500 hover:text-slate-800 cursor-pointer';
+      }
+      if (btnS) {
+        btnS.className = tab === 'sector'
+          ? 'flex-1 py-1.5 rounded-xl transition flex items-center justify-center gap-1.5 bg-white text-indigo-700 shadow-2xs cursor-pointer'
+          : 'flex-1 py-1.5 rounded-xl transition flex items-center justify-center gap-1.5 text-slate-500 hover:text-slate-800 cursor-pointer';
+      }
+      if (btnM) {
+        btnM.className = tab === 'macro'
+          ? 'flex-1 py-1.5 rounded-xl transition flex items-center justify-center gap-1.5 bg-white text-indigo-700 shadow-2xs cursor-pointer'
+          : 'flex-1 py-1.5 rounded-xl transition flex items-center justify-center gap-1.5 text-slate-500 hover:text-slate-800 cursor-pointer';
+      }
+
+      if (tab === 'ranking') updateTeacherRankingTable();
+    }
+
+    function initTeacherStockSelect() {
+      const sel = document.getElementById('teacherStockSelect');
+      if (!sel) return;
+      sel.innerHTML = ALL_STOCKS.map(s => `<option value="${s.id}">[${s.cat}] ${s.name} (${s.id})</option>`).join('');
+    }
+
+    function triggerStockDirectCatalyst(isGood) {
+      const sel = document.getElementById('teacherStockSelect');
+      if (!sel) return;
+      const stockId = sel.value;
+      const targetStock = ALL_STOCKS.find(s => s.id === stockId);
+      if (!targetStock) return;
+
+      const mult = isGood ? 1.15 : 0.85;
+      const rateStr = isGood ? '+15%' : '-15%';
+
+      targetStock.price = Math.max(targetStock.limitLow, Math.min(targetStock.limitHigh, alignToKrxTick(targetStock.price * mult)));
+      targetStock.diff = targetStock.price - targetStock.base;
+      targetStock.rate = Number(((targetStock.diff / targetStock.base) * 100).toFixed(2));
+      targetStock.history.push(targetStock.price);
+      if (targetStock.history.length > 50) targetStock.history.shift();
+
+      selectStock(selectedStockId);
+      updateAssets();
+
+      const shockEvent = {
+        title: `[${targetStock.name}] ${isGood ? '🌟 단독 대형 호재 공시' : '⚠️ 긴급 단독 악재 발생'}`,
+        msg: isGood
+          ? `${targetStock.name} 기업의 독점 신기술 개발 및 글로벌 대형 수주 계약 체결 공시로 매수세가 폭발하고 있습니다.`
+          : `${targetStock.name} 기업의 핵심 공급망 차질 및 분기 실적 급감 우려로 매도 물량이 쏟아지고 있습니다.`,
+        isUp: isGood,
+        shockSector: targetStock.cat,
+        rateStr,
+        rateMult: mult,
+        relatedCodes: [targetStock.id],
+        targetSectors: [targetStock.cat],
+        summary: `${targetStock.name} 종목의 주가가 즉시 ${rateStr} 급변동했습니다.`
+      };
+      applyShock(shockEvent, true);
+    }
+
+    let currentTeacherSector = '식품/외식';
+
+    function renderTeacherSectorCatalysts() {
+      const keys = Object.keys(SECTOR_CATALYSTS);
+      const chips = document.getElementById('teacherSectorChips');
+      if (!chips) return;
+
+      chips.innerHTML = keys.map(k => {
+        const item = SECTOR_CATALYSTS[k];
+        const isSel = currentTeacherSector === k;
+        return `
+          <button onclick="selectTeacherSector('${k}')" class="px-2 py-1.5 rounded-xl text-xs font-black transition flex flex-col items-center justify-center gap-0.5 border cursor-pointer ${isSel ? 'bg-indigo-600 text-white border-indigo-600 shadow-xs' : 'bg-white text-slate-700 border-slate-200 hover:bg-slate-100'}">
+            <span class="text-base">${item.icon}</span>
+            <span class="text-[11px]">${k}</span>
+          </button>
+        `;
+      }).join('');
+
+      const sData = SECTOR_CATALYSTS[currentTeacherSector];
+      if (!sData) return;
+
+      const banner = document.getElementById('teacherSelectedSectorBanner');
+      if (banner) {
+        banner.innerHTML = `
+          <div class="flex items-center gap-2">
+            <span class="text-2xl">${sData.icon}</span>
+            <div>
+              <span class="font-black text-indigo-950 text-xs">${sData.name} 대표 기업군</span>
+              <div class="text-[11px] text-slate-500 font-medium">${sData.stocksHint}</div>
+            </div>
+          </div>
+          <span class="text-[11px] font-black text-indigo-700 bg-white px-2 py-1 rounded-lg border border-indigo-200">
+            업종별 호재/악재
+          </span>
+        `;
+      }
+
+      const lGood = document.getElementById('labelSectorGood');
+      if (lGood) lGood.textContent = `[${sData.name}] 호재 4종 (소속 종목 일제히 상승)`;
+      const lBad = document.getElementById('labelSectorBad');
+      if (lBad) lBad.textContent = `[${sData.name}] 악재 4종 (소속 종목 일제히 하락)`;
+
+      const goodGrid = document.getElementById('gridSectorGood');
+      if (goodGrid) {
+        goodGrid.innerHTML = sData.good.map(cat => `
+          <button onclick='applySectorCatalystDirect("${sData.name}", ${JSON.stringify(cat)}, true)' class="p-3 rounded-2xl bg-white hover:bg-rose-50 border border-rose-200 text-left transition shadow-2xs flex flex-col justify-between cursor-pointer">
+            <div>
+              <div class="flex items-center justify-between gap-1 pb-1 border-b border-rose-100">
+                <span class="font-black text-xs text-rose-700 leading-snug">${cat.name}</span>
+                <span class="px-1.5 py-0.5 rounded text-[10px] font-black bg-rose-100 text-rose-700 flex-shrink-0">${cat.rateStr}</span>
+              </div>
+              <p class="text-[11px] text-slate-600 mt-1.5 leading-relaxed font-medium">${cat.desc}</p>
+            </div>
+            <div class="mt-2.5 pt-1.5 border-t border-rose-100 text-[10px] font-bold text-rose-600">클릭 시 해당 업종 주가 즉시 반영</div>
+          </button>
+        `).join('');
+      }
+
+      const badGrid = document.getElementById('gridSectorBad');
+      if (badGrid) {
+        badGrid.innerHTML = sData.bad.map(cat => `
+          <button onclick='applySectorCatalystDirect("${sData.name}", ${JSON.stringify(cat)}, false)' class="p-3 rounded-2xl bg-white hover:bg-blue-50 border border-blue-200 text-left transition shadow-2xs flex flex-col justify-between cursor-pointer">
+            <div>
+              <div class="flex items-center justify-between gap-1 pb-1 border-b border-blue-100">
+                <span class="font-black text-xs text-blue-700 leading-snug">${cat.name}</span>
+                <span class="px-1.5 py-0.5 rounded text-[10px] font-black bg-blue-100 text-blue-700 flex-shrink-0">${cat.rateStr}</span>
+              </div>
+              <p class="text-[11px] text-slate-600 mt-1.5 leading-relaxed font-medium">${cat.desc}</p>
+            </div>
+            <div class="mt-2.5 pt-1.5 border-t border-blue-100 text-[10px] font-bold text-blue-600">클릭 시 해당 업종 주가 즉시 반영</div>
+          </button>
+        `).join('');
+      }
+    }
+
+    function selectTeacherSector(k) {
+      currentTeacherSector = k;
+      renderTeacherSectorCatalysts();
+    }
+
+    function applySectorCatalystDirect(secName, cat, isGood) {
+      const shockEvent = {
+        title: `[${secName}] ${cat.name}`,
+        msg: `${secName} 업종에 중요한 시장 이벤트가 발생했습니다.\n${cat.desc}`,
+        isUp: isGood,
+        shockSector: secName,
+        rateStr: cat.rateStr,
+        rateMult: cat.mult,
+        targetSectors: [secName],
+        relatedCodes: ALL_STOCKS.filter(s => s.cat === secName).map(s => s.id),
+        summary: `소속 기업 전 종목의 시장 가격에 즉시 ${cat.rateStr} 수준의 주가 등락이 반영되었습니다.`
+      };
+      applyShock(shockEvent, true);
+    }
+
+    function renderTeacherShocks() {
+      const goodGrid = document.getElementById('gridGoodShocks');
+      if (goodGrid) {
+        goodGrid.innerHTML = GOOD_SHOCKS.map(s => `
+          <button onclick='applyShock(${JSON.stringify(s)}, true)' class="p-3 rounded-2xl bg-white hover:bg-rose-50 border border-rose-200 text-left transition shadow-2xs flex flex-col justify-between cursor-pointer">
+            <div>
+              <div class="flex justify-between items-center font-black text-xs text-rose-700 pb-1 border-b border-rose-100">
+                <span>${s.title}</span>
+                <span class="px-1.5 py-0.2 rounded bg-rose-100 text-rose-700 text-[10px]">${s.rateStr}</span>
+              </div>
+              <p class="text-[11px] text-slate-700 mt-2 leading-relaxed font-medium">${s.msg}</p>
+            </div>
+            <div class="mt-2.5 pt-1 border-t border-rose-100 text-[10px] font-bold text-slate-500">수혜: ${s.shockSector}</div>
+          </button>
+        `).join('');
+      }
+
+      const badGrid = document.getElementById('gridBadShocks');
+      if (badGrid) {
+        badGrid.innerHTML = BAD_SHOCKS.map(s => `
+          <button onclick='applyShock(${JSON.stringify(s)}, true)' class="p-3 rounded-2xl bg-white hover:bg-blue-50 border border-blue-200 text-left transition shadow-2xs flex flex-col justify-between cursor-pointer">
+            <div>
+              <div class="flex justify-between items-center font-black text-xs text-blue-700 pb-1 border-b border-blue-100">
+                <span>${s.title}</span>
+                <span class="px-1.5 py-0.2 rounded bg-blue-100 text-blue-700 text-[10px]">${s.rateStr}</span>
+              </div>
+              <p class="text-[11px] text-slate-700 mt-2 leading-relaxed font-medium">${s.msg}</p>
+            </div>
+            <div class="mt-2.5 pt-1 border-t border-blue-100 text-[10px] font-bold text-slate-500">피해: ${s.shockSector}</div>
+          </button>
+        `).join('');
+      }
+    }
+
+    function openQRModal() {
+      const m = document.getElementById('qrModal');
+      if (!m) return;
+      m.classList.remove('hidden');
+      const pills = document.getElementById('qrClassPills');
+      const classes = ['1반', '2반', '3반', '4반', '5반', '6반', '7반', '8반', '9반', '10반'];
+      if (pills) {
+        pills.innerHTML = classes.map(c => `
+          <button onclick="selectQRClass('${c}')" class="px-3 py-1 rounded-xl text-xs font-black transition cursor-pointer ${selectedClass === c ? 'bg-indigo-600 text-white' : 'bg-white text-slate-700 border border-slate-200'}">${c}</button>
+        `).join('');
+      }
+      renderQRCodeCanvas();
+    }
+
+    function selectQRClass(cls) {
+      selectedClass = cls;
+      openQRModal();
+      const badge = document.getElementById('headerRoomBadge');
+      if (badge) badge.textContent = `${cls} QR코드`;
+    }
+
+    function toggleQRModal(show) {
+      const modal = document.getElementById('qrModal');
+      if (modal) modal.classList.toggle('hidden', !show);
+    }
+
+    function setQrUrlMode(mode) {
+      qrUrlMode = mode;
+      const btnCur = document.getElementById('btnQrUrlModeCurrent');
+      const btnGit = document.getElementById('btnQrUrlModeGithub');
+      if (btnCur && btnGit) {
+        if (mode === 'current') {
+          btnCur.className = 'px-2.5 py-1 rounded-lg text-xs font-black transition cursor-pointer bg-indigo-600 text-white shadow-xs';
+          btnGit.className = 'px-2.5 py-1 rounded-lg text-xs font-black transition cursor-pointer bg-white text-slate-700 border border-slate-200';
+        } else {
+          btnCur.className = 'px-2.5 py-1 rounded-lg text-xs font-black transition cursor-pointer bg-white text-slate-700 border border-slate-200';
+          btnGit.className = 'px-2.5 py-1 rounded-lg text-xs font-black transition cursor-pointer bg-indigo-600 text-white shadow-xs';
+        }
+      }
+      renderQRCodeCanvas();
+    }
+
+    function renderQRCodeCanvas() {
+      const container = document.getElementById('qrcodeCanvasContainer');
+      if (!container) return;
+      container.innerHTML = '';
+      const lbl = document.getElementById('qrTargetClassLabel');
+      if (lbl) lbl.textContent = `KRX 모의주식 [${selectedClass}] 입장 QR`;
+      const classNumMatch = selectedClass.match(/\d+/);
+      const classNum = classNumMatch ? classNumMatch[0] : '1';
+
+      const isHttp = window.location && window.location.protocol && window.location.protocol.startsWith('http');
+      const liveHostUrl = isHttp ? (window.location.origin + window.location.pathname) : window.location.href;
+      const baseUrl = qrUrlMode === 'github' ? 'https://kia6073-ux.github.io/sik/' : liveHostUrl;
+
+      const sep = baseUrl.includes('?') ? '&' : '?';
+      const url = `${baseUrl}${sep}room=${encodeURIComponent(selectedClass)}&class=${classNum}`;
+
+      const textEl = document.getElementById('qrFullUrlText');
+      if (textEl) textEl.textContent = url;
+
+      let rendered = false;
+      if (window.QRCode) {
+        try {
+          new QRCode(container, {
+            text: url,
+            width: 200,
+            height: 200,
+            colorDark: '#0f172a',
+            colorLight: '#ffffff'
+          });
+          rendered = true;
+        } catch (e) {}
+      }
+
+      if (!rendered) {
+        const img = document.createElement('img');
+        img.src = `https://api.qrserver.com/v1/create-qr-code/?size=200x200&data=${encodeURIComponent(url)}`;
+        img.className = 'w-48 h-48 rounded-xl shadow-xs';
+        img.alt = 'QR Code';
+        container.appendChild(img);
+      }
+    }
+
+    function copyQRUrl() {
+      const el = document.getElementById('qrFullUrlText');
+      if (!el || !el.textContent) return;
+      try {
+        const tempInput = document.createElement('input');
+        tempInput.value = el.textContent;
+        document.body.appendChild(tempInput);
+        tempInput.select();
+        document.execCommand('copy');
+        document.body.removeChild(tempInput);
+        showToast('학생 접속 주소가 복사되었습니다.', 'success');
+      } catch (err) {
+        prompt('아래 주소를 복사하세요:', el.textContent);
+      }
+    }
+
+    function initKeyboardShortcuts() {
+      window.addEventListener('keydown', e => {
+        const isModifier = e.ctrlKey || e.metaKey || e.altKey;
+        if (isModifier && e.key === '1') {
+          e.preventDefault();
+          enterTeacherDirectly();
+        } else if (isModifier && e.key === '2') {
+          e.preventDefault();
+          const modal = document.getElementById('teacherModal');
+          const isHidden = modal ? modal.classList.contains('hidden') : true;
+          if (isHidden && student.name !== '선생님 (교사)') {
+            enterTeacherDirectly();
+          } else {
+            toggleTeacherModal(isHidden);
+          }
+        } else if (e.key === 'F1') {
+          e.preventDefault();
+          enterTeacherDirectly();
+        }
+      });
+    }
+
+    window.onload = function() {
+      renderCategories();
+      renderStockList();
+      initChart();
+      selectStock(selectedStockId);
+      renderTeacherShocks();
+      initTeacherStockSelect();
+      renderTeacherSectorCatalysts();
+      initRealtimeSync();
+      updateTeacherRankingTable();
+      initTimers();
+      initLiveNewsEngine();
+      initKeyboardShortcuts();
+    };
+  </script>
+</body>
+</html>
