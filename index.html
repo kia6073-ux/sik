@@ -8,6 +8,8 @@
   <script src="https://cdn.tailwindcss.com"></script>
   <!-- Font Awesome 아이콘 폰트 -->
   <link rel="stylesheet" href="https://cdnjs.cloudflare.com/ajax/libs/font-awesome/6.5.1/css/all.min.css">
+  <!-- Paho MQTT WebSocket 무료 실시간 교실 통신 라이브러리 (서버 설치 0초) -->
+  <script src="https://cdnjs.cloudflare.com/ajax/libs/paho-mqtt/1.0.1/mqttws31.min.js"></script>
   
   <script>
     tailwind.config = {
@@ -81,7 +83,8 @@
       <!-- 엔진 상태 뱃지 -->
       <div class="ml-1 hidden lg:flex items-center gap-1.5 bg-slate-50 border border-slate-200 rounded-lg px-2 py-1 text-xs font-bold">
         <span id="netStatusDot" class="w-2 h-2 rounded-full bg-emerald-500 animate-pulse"></span>
-        <span id="netStatusText" class="text-slate-700">KRX 정상</span>
+        <span id="netStatusText" class="text-slate-700">실시간 교실망 연결 중...</span>
+        <span id="roomCodeBadge" class="ml-1 px-1.5 py-0.2 rounded bg-indigo-100 text-indigo-700 text-[10px] font-mono">ROOM: 기본</span>
       </div>
     </div>
 
@@ -942,6 +945,213 @@
 
   <script>
     /* ==========================================================
+       0. GitHub Pages 전용 완전 무료 실시간 교실 네트워크 (WebSocket/MQTT)
+       별도의 데이터베이스나 서버 설치 없이 전원 실시간 연동
+       ========================================================== */
+    const urlParams = new URLSearchParams(window.location.search);
+    const CLASS_ROOM_ID = urlParams.get('room') || 'krx_class_default';
+    const MQTT_BROKER = 'broker.hivemq.com';
+    const MQTT_PORT = 8884; // SSL WebSocket Port
+    const MQTT_TOPIC_ROOT = `krx_simulation_edu/${CLASS_ROOM_ID}`;
+    const CLIENT_UNIQUE_ID = 'client_' + Math.random().toString(36).substring(2, 10);
+
+    let mqttClient = null;
+    let isNetworkOnline = false;
+
+    function initClassroomNetwork() {
+      const roomBadge = document.getElementById('roomCodeBadge');
+      if (roomBadge) roomBadge.textContent = `ROOM: ${CLASS_ROOM_ID.replace('krx_class_', '')}`;
+
+      try {
+        mqttClient = new Paho.MQTT.Client(MQTT_BROKER, Number(MQTT_PORT), "/mqtt", CLIENT_UNIQUE_ID);
+        mqttClient.onConnectionLost = onMqttConnectionLost;
+        mqttClient.onMessageArrived = onMqttMessageArrived;
+
+        const connectOptions = {
+          useSSL: true,
+          timeout: 5,
+          keepAliveInterval: 30,
+          cleanSession: true,
+          onSuccess: onMqttConnectSuccess,
+          onFailure: onMqttConnectFailure
+        };
+
+        mqttClient.connect(connectOptions);
+      } catch (err) {
+        console.warn("실시간 네트워크 초기화 오류 (독립 모드로 실행):", err);
+      }
+    }
+
+    function onMqttConnectSuccess() {
+      isNetworkOnline = true;
+      const netDot = document.getElementById('netStatusDot');
+      const netText = document.getElementById('netStatusText');
+      if (netDot) netDot.className = 'w-2 h-2 rounded-full bg-emerald-500 animate-pulse';
+      if (netText) netText.textContent = `실시간 연동 정상 (${CLASS_ROOM_ID})`;
+
+      // 해당 학급 방의 모든 메시지 구독
+      mqttClient.subscribe(`${MQTT_TOPIC_ROOT}/#`, { qos: 0 });
+
+      // 방 입장 신호 전송 (기존 학생/교사들에게 내 존재 알리기)
+      if (currentStudent.name) {
+        broadcastNetworkMessage('STUDENT_PING', { student: currentStudent });
+      } else {
+        broadcastNetworkMessage('REQUEST_MARKET_STATE', { from: CLIENT_UNIQUE_ID });
+      }
+
+      showToast('교실 네트워크 접속 🌐', `[${CLASS_ROOM_ID}] 교실 방에 성공적으로 연결되었습니다.`, 'success');
+    }
+
+    function onMqttConnectFailure(err) {
+      isNetworkOnline = false;
+      const netDot = document.getElementById('netStatusDot');
+      const netText = document.getElementById('netStatusText');
+      if (netDot) netDot.className = 'w-2 h-2 rounded-full bg-amber-500';
+      if (netText) netText.textContent = `오프라인 독립 모드`;
+      console.warn("MQTT 접속 실패:", err);
+    }
+
+    function onMqttConnectionLost(responseObject) {
+      isNetworkOnline = false;
+      const netDot = document.getElementById('netStatusDot');
+      const netText = document.getElementById('netStatusText');
+      if (netDot) netDot.className = 'w-2 h-2 rounded-full bg-rose-500 animate-pulse';
+      if (netText) netText.textContent = `네트워크 재연결 중...`;
+      if (responseObject.errorCode !== 0) {
+        setTimeout(initClassroomNetwork, 3000);
+      }
+    }
+
+    function broadcastNetworkMessage(type, payload) {
+      if (!mqttClient || !isNetworkOnline) return;
+      try {
+        const messageBody = JSON.stringify({
+          type: type,
+          senderId: CLIENT_UNIQUE_ID,
+          payload: payload,
+          timestamp: Date.now()
+        });
+        const msg = new Paho.MQTT.Message(messageBody);
+        msg.destinationName = `${MQTT_TOPIC_ROOT}/${type}`;
+        msg.qos = 0;
+        mqttClient.send(msg);
+      } catch (e) {
+        console.error("메시지 전송 실패:", e);
+      }
+    }
+
+    function onMqttMessageArrived(message) {
+      try {
+        const data = JSON.parse(message.payloadString);
+        if (data.senderId === CLIENT_UNIQUE_ID) return; // 내가 보낸 건 무시
+
+        const { type, payload } = data;
+
+        // 1) 학생 입장 또는 자산 변동 알림 수신
+        if (type === 'STUDENT_UPDATE' || type === 'STUDENT_PING') {
+          const st = payload.student;
+          if (!st || !st.id) return;
+
+          // 강퇴 명단에 있는 학생인지 체크
+          if (bannedStudents.some(b => b.id === st.id)) return;
+
+          const idx = classroomStudents.findIndex(s => s.id === st.id);
+          if (idx >= 0) {
+            classroomStudents[idx] = { ...st, isSelf: false };
+          } else {
+            classroomStudents.push({ ...st, isSelf: false });
+          }
+          classroomStudents.sort((a, b) => (b.totalAsset || 0) - (a.totalAsset || 0));
+          updateStudentCountDisplays();
+          renderTeacherRanking();
+
+          // PING을 보낸 학생에게 내 정보도 즉시 응답 (서로 명단 완성)
+          if (type === 'STUDENT_PING' && currentStudent.name) {
+            broadcastNetworkMessage('STUDENT_UPDATE', { student: currentStudent });
+          }
+        }
+
+        // 2) 신규 접속자가 시장 상태를 요청했을 때 (교사가 응답)
+        else if (type === 'REQUEST_MARKET_STATE' && currentStudent.isTeacher) {
+          broadcastNetworkMessage('MARKET_STATE_SYNC', {
+            marketState: marketState,
+            marketSeconds: marketSeconds,
+            marketConfigMinutes: marketConfigMinutes,
+            bannedStudents: bannedStudents
+          });
+        }
+
+        // 3) 교사의 시장 상태 동기화 명령 수신 (개장, 일시정지, 시간 등)
+        else if (type === 'MARKET_STATE_SYNC') {
+          if (payload.marketState && payload.marketState !== marketState) {
+            setMarketState(payload.marketState, false);
+          }
+          if (typeof payload.marketSeconds === 'number') {
+            marketSeconds = payload.marketSeconds;
+            updateTimerDisplay();
+          }
+          if (typeof payload.marketConfigMinutes === 'number') {
+            marketConfigMinutes = payload.marketConfigMinutes;
+            const input = document.getElementById('teacherMarketMinutesInput');
+            if (input) input.value = marketConfigMinutes;
+          }
+          if (Array.isArray(payload.bannedStudents)) {
+            bannedStudents = payload.bannedStudents;
+            updateTeacherKickBadge();
+            const kicked = bannedStudents.find(b => b.id === currentStudent.id);
+            if (kicked) triggerSelfKickedScreen(kicked.reason, kicked.time);
+          }
+        }
+
+        // 4) 교사의 지원금 지급 이벤트
+        else if (type === 'SUBSIDY_GIVE') {
+          if (currentStudent.name && !currentStudent.isTeacher) {
+            currentStudent.cash += payload.amount;
+            calculateAssets();
+            calculateOrderTotal();
+            SoundFX.playTone(587.33, 0.2, 'sine', 0.25);
+            showToast('지원금 입금 🎁', `선생님께서 전원 지원금 +${payload.amount.toLocaleString()}원을 지급하셨습니다!`, 'success');
+            broadcastNetworkMessage('STUDENT_UPDATE', { student: currentStudent });
+          }
+        }
+
+        // 5) 거시경제 쇼크 이벤트 수신
+        else if (type === 'MARKET_SHOCK') {
+          applyMarketShockEffect(payload.shockType, false);
+        }
+
+        // 6) 업종별 호재/악재 이벤트 수신
+        else if (type === 'SECTOR_CATALYST') {
+          applySectorCatalystEffect(payload.catalystId, payload.isGood, payload.sectorId, false);
+        }
+
+        // 7) 학생 강퇴 이벤트 수신
+        else if (type === 'STUDENT_KICKED') {
+          const { kickedId, reason, time } = payload;
+          const sIdx = classroomStudents.findIndex(s => s.id === kickedId);
+          if (sIdx >= 0) classroomStudents.splice(sIdx, 1);
+          updateStudentCountDisplays();
+          renderTeacherRanking();
+
+          if (currentStudent.id === kickedId) {
+            triggerSelfKickedScreen(reason, time);
+          }
+        }
+
+        // 8) 학생 강퇴 해제 수신
+        else if (type === 'STUDENT_UNBANNED') {
+          const { unbannedId } = payload;
+          bannedStudents = bannedStudents.filter(b => b.id !== unbannedId);
+          updateTeacherKickBadge();
+          renderTeacherRanking();
+        }
+
+      } catch (err) {
+        console.error("메시지 처리 오류:", err);
+      }
+    }
+
+    /* ==========================================================
        1. 순수 Web Audio API 사운드 합성기
        ========================================================== */
     const SoundFX = {
@@ -1283,173 +1493,7 @@
     let marketTimerInterval = null;
     let priceTickTimer = null;
 
-    const appId = typeof __app_id !== 'undefined' ? __app_id : 'krx-stock-class-real';
-    let firebaseApp = null;
-    let auth = null;
-    let db = null;
-    let currentUserUid = null;
-    let isCloudConnected = false;
-
-    async function initFirebaseCloudEngine() {
-      if (typeof __firebase_config === 'undefined' || !__firebase_config) {
-        return;
-      }
-
-      try {
-        const { initializeApp } = await import("https://www.gstatic.com/firebasejs/11.6.1/firebase-app.js");
-        const { getAuth, signInAnonymously, signInWithCustomToken } = await import("https://www.gstatic.com/firebasejs/11.6.1/firebase-auth.js");
-        const { getFirestore, doc, setDoc, onSnapshot, collection } = await import("https://www.gstatic.com/firebasejs/11.6.1/firebase-firestore.js");
-
-        const firebaseConfig = JSON.parse(__firebase_config);
-        firebaseApp = initializeApp(firebaseConfig);
-        auth = getAuth(firebaseApp);
-        db = getFirestore(firebaseApp);
-
-        // 선행 인증 처리
-        if (typeof __initial_auth_token !== 'undefined' && __initial_auth_token) {
-          await signInWithCustomToken(auth, __initial_auth_token);
-        } else {
-          await signInAnonymously(auth);
-        }
-
-        currentUserUid = auth.currentUser?.uid || crypto.randomUUID();
-        isCloudConnected = true;
-
-        const netDot = document.getElementById('netStatusDot');
-        const netText = document.getElementById('netStatusText');
-        if (netDot) netDot.className = 'w-2 h-2 rounded-full bg-emerald-500 animate-pulse';
-        if (netText) netText.textContent = `클라우드 실시간 연동 모드`;
-
-        setupCloudMarketListener({ doc, onSnapshot, setDoc });
-        setupCloudStudentsListener({ collection, onSnapshot });
-      } catch (err) {
-        console.warn("오프라인 독립 시뮬레이터로 안전 동작합니다:", err);
-      }
-    }
-
-    function setupCloudMarketListener(fb) {
-      if (!db || !currentUserUid) return;
-      const marketDocRef = fb.doc(db, 'artifacts', appId, 'public', 'data', 'market_state', 'config');
-
-      fb.onSnapshot(marketDocRef, (snap) => {
-        if (!snap.exists()) return;
-        const data = snap.data();
-
-        if (data.marketState && data.marketState !== marketState) {
-          setMarketState(data.marketState, false);
-        }
-        if (typeof data.marketSeconds === 'number') {
-          marketSeconds = data.marketSeconds;
-          updateTimerDisplay();
-        }
-        if (typeof data.marketConfigMinutes === 'number' && data.marketConfigMinutes !== marketConfigMinutes) {
-          marketConfigMinutes = data.marketConfigMinutes;
-          const input = document.getElementById('teacherMarketMinutesInput');
-          if (input) input.value = marketConfigMinutes;
-        }
-        if (data.lastSubsidyTimestamp && data.lastSubsidyTimestamp !== window.lastAppliedSubsidyTime) {
-          window.lastAppliedSubsidyTime = data.lastSubsidyTimestamp;
-          if (data.subsidyAmount && currentStudent.name) {
-            currentStudent.cash += data.subsidyAmount;
-            calculateAssets();
-            calculateOrderTotal();
-            pushStudentDataToCloud();
-            SoundFX.playTone(587.33, 0.2, 'sine', 0.25);
-            showToast('지원금 입금 🎁', `선생님께서 전원 지원금 +${Number(data.subsidyAmount).toLocaleString()}원을 지급하셨습니다!`, 'success');
-          }
-        }
-        if (data.lastShock && data.lastShock.timestamp !== window.lastAppliedShockTime) {
-          window.lastAppliedShockTime = data.lastShock.timestamp;
-          applyMarketShockEffect(data.lastShock.type, false);
-        }
-        if (data.lastSectorCatalyst && data.lastSectorCatalyst.timestamp !== window.lastAppliedSectorTime) {
-          window.lastAppliedSectorTime = data.lastSectorCatalyst.timestamp;
-          applySectorCatalystEffect(
-            data.lastSectorCatalyst.catalystId,
-            data.lastSectorCatalyst.isGood,
-            data.lastSectorCatalyst.sectorId,
-            false
-          );
-        }
-        if (Array.isArray(data.bannedStudents)) {
-          bannedStudents = data.bannedStudents;
-          sessionStorage.setItem('krx_banned_students', JSON.stringify(bannedStudents));
-          updateTeacherKickBadge();
-
-          const isKicked = bannedStudents.find(b => b.id === currentStudent.id || b.uid === currentUserUid);
-          if (isKicked) {
-            triggerSelfKickedScreen(isKicked.reason, isKicked.time);
-          }
-        }
-      }, (err) => {
-        console.error("Market listener error:", err);
-      });
-    }
-
-    function setupCloudStudentsListener(fb) {
-      if (!db || !currentUserUid) return;
-      const studentsColRef = fb.collection(db, 'artifacts', appId, 'public', 'data', 'classroom_students');
-
-      fb.onSnapshot(studentsColRef, (snapshot) => {
-        const studentDocs = [];
-        snapshot.forEach(docSnap => {
-          studentDocs.push(docSnap.data());
-        });
-
-        studentDocs.sort((a, b) => (b.totalAsset || 0) - (a.totalAsset || 0));
-
-        classroomStudents = studentDocs.map(item => ({
-          ...item,
-          isSelf: item.uid === currentUserUid || item.id === currentStudent.id
-        }));
-
-        updateStudentCountDisplays();
-        renderTeacherRanking();
-      }, (err) => {
-        console.error("Students listener error:", err);
-      });
-    }
-
-    async function pushStudentDataToCloud() {
-      if (!isCloudConnected || !db || !currentStudent.name) return;
-      try {
-        const { doc, setDoc } = await import("https://www.gstatic.com/firebasejs/11.6.1/firebase-firestore.js");
-        const docRef = doc(db, 'artifacts', appId, 'public', 'data', 'classroom_students', currentStudent.id);
-        
-        await setDoc(docRef, {
-          id: currentStudent.id,
-          uid: currentUserUid,
-          classNum: currentStudent.classNum,
-          studentNum: currentStudent.studentNum,
-          name: currentStudent.name,
-          cash: currentStudent.cash,
-          totalAsset: currentStudent.totalAsset,
-          profitRate: currentStudent.profitRate,
-          portfolio: currentStudent.portfolio,
-          tradeCount: currentStudent.tradeCount || 0,
-          updatedAt: Date.now()
-        }, { merge: true });
-      } catch (err) {
-        console.error("Failed to push student data to cloud:", err);
-      }
-    }
-
-    async function broadcastMarketStateToCloud(updates) {
-      if (!isCloudConnected || !db) return;
-      try {
-        const { doc, setDoc } = await import("https://www.gstatic.com/firebasejs/11.6.1/firebase-firestore.js");
-        const marketDocRef = doc(db, 'artifacts', appId, 'public', 'data', 'market_state', 'config');
-        await setDoc(marketDocRef, {
-          ...updates,
-          updatedAt: Date.now()
-        }, { merge: true });
-      } catch (err) {
-        console.error("Failed to broadcast market state:", err);
-      }
-    }
-
     window.onload = function() {
-      // 윈도우 포커스 확보
       window.focus();
 
       renderCategoryChips();
@@ -1460,7 +1504,9 @@
       initCanvasResponsive();
       initKeyboardShortcuts();
       initTopNewsTicker();
-      initFirebaseCloudEngine();
+
+      // GitHub Pages 전용 실시간 교실 네트워크 연결
+      initClassroomNetwork();
 
       // 세션 복원 및 강퇴 여부 검증
       const savedBanned = sessionStorage.getItem('krx_banned_students');
@@ -1482,6 +1528,8 @@
           syncCurrentStudentToClassroom();
           updateStudentUI();
           document.getElementById('loginModal').classList.add('hidden');
+          // 네트워크에 복구된 내 자산 정보 알림
+          broadcastNetworkMessage('STUDENT_UPDATE', { student: currentStudent });
         } catch(e) {
           openLoginModal(false);
         }
@@ -1602,7 +1650,8 @@
       updateStudentUI();
       document.getElementById('loginModal').classList.add('hidden');
 
-      pushStudentDataToCloud();
+      // 🌐 실시간 교실망 전체로 학생 입장 브로드캐스트 (교사 화면에 즉시 뜸!)
+      broadcastNetworkMessage('STUDENT_PING', { student: currentStudent });
 
       SoundFX.playTone(523.25, 0.15, 'sine', 0.25);
       showToast('계좌 개설 완료', `초기 투자금 ${SEED_MONEY.toLocaleString()}원이 지급되었습니다.`, 'success');
@@ -1683,15 +1732,12 @@
 
       classroomStudents.splice(studentIdx, 1);
 
-      if (isCloudConnected && db) {
-        try {
-          const { doc, deleteDoc } = await import("https://www.gstatic.com/firebasejs/11.6.1/firebase-firestore.js");
-          await deleteDoc(doc(db, 'artifacts', appId, 'public', 'data', 'classroom_students', target.id));
-          await broadcastMarketStateToCloud({ bannedStudents: bannedStudents });
-        } catch (e) {
-          console.error("Kick broadcast error:", e);
-        }
-      }
+      // 🌐 실시간 교실망으로 강퇴 명령 브로드캐스트
+      broadcastNetworkMessage('STUDENT_KICKED', {
+        kickedId: target.id,
+        reason: reason,
+        time: timeStr
+      });
 
       closeKickConfirmModal();
       SoundFX.playKickSound();
@@ -1721,9 +1767,8 @@
 
       classroomStudents.push(restored);
 
-      if (isCloudConnected && db) {
-        await broadcastMarketStateToCloud({ bannedStudents: bannedStudents });
-      }
+      // 🌐 강퇴 해제 브로드캐스트
+      broadcastNetworkMessage('STUDENT_UNBANNED', { unbannedId: bannedId });
 
       SoundFX.playTone(659.25, 0.15, 'sine', 0.25);
       showToast('재승인 완료 🕊️', `${restored.name} 학생의 강퇴 조치가 해제되었습니다.`, 'success');
@@ -1926,10 +1971,13 @@
       }
       updateTimerDisplay();
 
+      // 교사가 변경한 경우 모든 학생 화면으로 동시 전송
       if (broadcast) {
-        broadcastMarketStateToCloud({
+        broadcastNetworkMessage('MARKET_STATE_SYNC', {
           marketState: marketState,
-          marketSeconds: marketSeconds
+          marketSeconds: marketSeconds,
+          marketConfigMinutes: marketConfigMinutes,
+          bannedStudents: bannedStudents
         });
       }
     }
@@ -2604,7 +2652,8 @@
       renderTeacherRanking();
       sessionStorage.setItem('krx_student_session', JSON.stringify(currentStudent));
 
-      pushStudentDataToCloud();
+      // 🌐 체결 시 실시간으로 내 최신 자산과 수익률을 교사 및 전체 학생에게 브로드캐스트
+      broadcastNetworkMessage('STUDENT_UPDATE', { student: currentStudent });
     }
 
     function calculateAssets() {
@@ -3063,15 +3112,235 @@
       renderPortfolio();
       renderTeacherRanking();
 
+      // 🌐 교사가 발동한 호재/악재를 모든 학생에게 실시간 전파
       if (broadcast) {
-        broadcastMarketStateToCloud({
-          lastSectorCatalyst: {
-            catalystId,
-            isGood,
-            sectorId,
-            timestamp: Date.now()
-          }
+        broadcastNetworkMessage('SECTOR_CATALYST', {
+          catalystId: catalystId,
+          isGood: isGood,
+          sectorId: sectorId
         });
+      }
+    }
+
+    function teacherToggleMarketControl() {
+      if (marketState === 'WAITING' || marketState === 'CLOSED') setMarketState('ACTIVE');
+      else if (marketState === 'ACTIVE') setMarketState('PAUSED');
+      else if (marketState === 'PAUSED') setMarketState('ACTIVE');
+    }
+
+    function teacherRestartMarketTimer() {
+      marketSeconds = marketConfigMinutes * 60;
+      setMarketState('WAITING', true);
+      dismissNewsBanner();
+      broadcastNetworkMessage('MARKET_STATE_SYNC', {
+        marketState: 'WAITING',
+        marketSeconds: marketSeconds,
+        marketConfigMinutes: marketConfigMinutes,
+        bannedStudents: bannedStudents
+      });
+      showToast('장 재설정', `정규장이 ${marketConfigMinutes}분(대기)으로 초기화되었습니다.`, 'info');
+    }
+
+    function setTeacherMinutes(minutes) {
+      const m = Math.max(10, Math.min(50, parseInt(minutes, 10) || 10));
+      marketConfigMinutes = m;
+      
+      const input = document.getElementById('teacherMarketMinutesInput');
+      if (input) input.value = m;
+      
+      const resetBtnText = document.getElementById('teacherResetBtnText');
+      if (resetBtnText) resetBtnText.textContent = `${m}분 재설정`;
+      
+      if (marketState === 'WAITING' || marketState === 'CLOSED') {
+        marketSeconds = marketConfigMinutes * 60;
+        updateTimerDisplay();
+      }
+
+      broadcastNetworkMessage('MARKET_STATE_SYNC', {
+        marketState: marketState,
+        marketSeconds: marketSeconds,
+        marketConfigMinutes: m,
+        bannedStudents: bannedStudents
+      });
+
+      showToast('장 시간 설정', `정규장 진행 시간이 ${m}분으로 설정되었습니다.`, 'info');
+    }
+
+    function teacherGiveSubsidy(amount = 500000) {
+      classroomStudents.forEach(st => {
+        st.cash += amount;
+        st.totalAsset += amount;
+      });
+      calculateAssets();
+      calculateOrderTotal();
+      SoundFX.playTone(587.33, 0.2, 'sine', 0.25);
+      showToast('지원금 전원 지급 🎁', `선생님께서 모든 학생에게 지원금 +${amount.toLocaleString()}원을 지급하셨습니다!`, 'success');
+      sessionStorage.setItem('krx_student_session', JSON.stringify(currentStudent));
+      renderTeacherRanking();
+
+      // 🌐 전원 지원금 지급 명령 브로드캐스트
+      broadcastNetworkMessage('SUBSIDY_GIVE', { amount: amount });
+    }
+
+    function triggerMarketShock(type) {
+      applyMarketShockEffect(type, true);
+    }
+
+    function applyMarketShockEffect(type, broadcast = true) {
+      let title = '';
+      let msg = '';
+      let isUp = true;
+      let shockSector = '거시경제';
+      let relatedCodes = [];
+      let rateStr = '';
+
+      if (type === 'BOOM_KFOOD') {
+        shockSector = '식품/외식';
+        rateStr = '+15%';
+        relatedCodes = ['003230', '004370', '271560', '097950'];
+        ALL_STOCKS.filter(s => s.cat === '식품/외식' || s.cat === '게임/엔터').forEach(s => {
+          const mult = 1.13 + (Math.random() * 0.04);
+          s.price = Math.min(s.limitHigh, alignToKrxTick(s.price * mult));
+          s.diff = s.price - s.base;
+          s.rate = Number(((s.diff / s.base) * 100).toFixed(2));
+          s.history.push(s.price);
+        });
+        title = '🍜 K-푸드 글로벌 열풍';
+        msg = '불닭볶음면·만두 등 글로벌 품절 대란! 해외 수출 신기록 달성으로 음식료 기업의 실적이 급증합니다.';
+        isUp = true;
+      } else if (type === 'BOOM_AI_TECH') {
+        shockSector = 'IT/반도체';
+        rateStr = '+16%';
+        relatedCodes = ['005930', '000660', '042700', '058470'];
+        ALL_STOCKS.filter(s => s.cat === 'IT/반도체').forEach(s => {
+          const mult = 1.14 + (Math.random() * 0.05);
+          s.price = Math.min(s.limitHigh, alignToKrxTick(s.price * mult));
+          s.diff = s.price - s.base;
+          s.rate = Number(((s.diff / s.base) * 100).toFixed(2));
+          s.history.push(s.price);
+        });
+        title = '🤖 AI 반도체 잭팟';
+        msg = '빅테크의 AI 서버 투자 확대로 HBM 메모리와 차세대 본더 장비 독점 공급 계약이 체결되었습니다.';
+        isUp = true;
+      } else if (type === 'BOOM_BATTERY') {
+        shockSector = '2차전지';
+        rateStr = '+14%';
+        relatedCodes = ['373220', '003670', '247540', '006400'];
+        ALL_STOCKS.filter(s => s.cat === '2차전지' || s.cat === '모빌리티').forEach(s => {
+          const mult = 1.12 + (Math.random() * 0.04);
+          s.price = Math.min(s.limitHigh, alignToKrxTick(s.price * mult));
+          s.diff = s.price - s.base;
+          s.rate = Number(((s.diff / s.base) * 100).toFixed(2));
+          s.history.push(s.price);
+        });
+        title = '🔋 2차전지 초대형 공급계약';
+        msg = '북미 글로벌 완성차 제조사와 수십조 원 규모의 전기차 배터리 장기 납품 계약이 전격 성사되었습니다.';
+        isUp = true;
+      } else if (type === 'BOOM_BIO_FDA') {
+        shockSector = '바이오';
+        rateStr = '+18%';
+        relatedCodes = ['000100', '207940', '196170', '128940'];
+        ALL_STOCKS.filter(s => s.cat === '바이오').forEach(s => {
+          const mult = 1.16 + (Math.random() * 0.06);
+          s.price = Math.min(s.limitHigh, alignToKrxTick(s.price * mult));
+          s.diff = s.price - s.base;
+          s.rate = Number(((s.diff / s.base) * 100).toFixed(2));
+          s.history.push(s.price);
+        });
+        title = '🧬 바이오 FDA 품목승인';
+        msg = '국산 토종 항암 신약이 미국 FDA 최종 품목허가를 취득하며 글로벌 제약 시장 처방이 본격화됩니다.';
+        isUp = true;
+      } else if (type === 'CRASH_RATE_HIKE') {
+        shockSector = '거시경제';
+        rateStr = '-14%';
+        relatedCodes = ['035420', '035720', '259960', '352820'];
+        ALL_STOCKS.filter(s => s.cat === 'IT/반도체' || s.cat === '게임/엔터').forEach(s => {
+          const mult = 0.86 - (Math.random() * 0.04);
+          s.price = Math.max(s.limitLow, alignToKrxTick(s.price * mult));
+          s.diff = s.price - s.base;
+          s.rate = Number(((s.diff / s.base) * 100).toFixed(2));
+          s.history.push(s.price);
+        });
+        title = '📉 기준금리 전격 인상';
+        msg = '물가 급등 우려로 중앙은행이 기준금리를 기습 인상하며 미래 성장 가치가 큰 IT·게임주가 급락합니다.';
+        isUp = false;
+      } else if (type === 'CRASH_OIL_SHOCK') {
+        shockSector = '모빌리티';
+        rateStr = '-13%';
+        relatedCodes = ['003490', '011200', '005380', '028260'];
+        ALL_STOCKS.filter(s => s.cat === '모빌리티' || s.cat === '뷰티/유통').forEach(s => {
+          const mult = 0.87 - (Math.random() * 0.04);
+          s.price = Math.max(s.limitLow, alignToKrxTick(s.price * mult));
+          s.diff = s.price - s.base;
+          s.rate = Number(((s.diff / s.base) * 100).toFixed(2));
+          s.history.push(s.price);
+        });
+        title = '🛢️ 국제 유가/물류비 폭등';
+        msg = '중동 분쟁으로 국제 유가와 해상 운임이 폭등해 항공사 유류비 부담과 유통·제조업 물류비가 폭증합니다.';
+        isUp = false;
+      } else if (type === 'CRASH_FOOD_COST') {
+        shockSector = '식품/외식';
+        rateStr = '-13%';
+        relatedCodes = ['004370', '007310', '271560', '005180'];
+        ALL_STOCKS.filter(s => s.cat === '식품/외식').forEach(s => {
+          const mult = 0.88 - (Math.random() * 0.04);
+          s.price = Math.max(s.limitLow, alignToKrxTick(s.price * mult));
+          s.diff = s.price - s.base;
+          s.rate = Number(((s.diff / s.base) * 100).toFixed(2));
+          s.history.push(s.price);
+        });
+        title = '🌾 국제 곡물 원가 쇼크';
+        msg = '이상기후로 밀가루·팜유·대두 가격이 치솟아 라면, 과자, 가공식품 제조사들의 영업이익이 급감합니다.';
+        isUp = false;
+      } else if (type === 'CRASH_SUPPLY_CHAIN') {
+        shockSector = '2차전지';
+        rateStr = '-14%';
+        relatedCodes = ['373220', '086520', '005490', '066970'];
+        ALL_STOCKS.filter(s => s.cat === '2차전지').forEach(s => {
+          const mult = 0.86 - (Math.random() * 0.04);
+          s.price = Math.max(s.limitLow, alignToKrxTick(s.price * mult));
+          s.diff = s.price - s.base;
+          s.rate = Number(((s.diff / s.base) * 100).toFixed(2));
+          s.history.push(s.price);
+        });
+        title = '⚡ 핵심 광물 수출 통제';
+        msg = '주요 자원 보유국이 핵심 배터리 원자재(리튬·니켈) 수출을 통제하여 생산 비용이 치솟습니다.';
+        isUp = false;
+      }
+
+      MARKET_NEWS_DATABASE.unshift({
+        id: `SHOCK_${Date.now()}`,
+        cat: shockSector,
+        tag: isUp ? '긴급호재 🚨' : '긴급악재 🚨',
+        impact: isUp ? 'UP' : 'DOWN',
+        title: `[속보] ${title}: ${msg}`,
+        summary: msg,
+        relatedCodes: relatedCodes
+      });
+      renderTopNewsItem(0);
+
+      showNewsBanner(`[시장 쇼크] ${title}: ${msg}`);
+      showToast(title, msg, isUp ? 'success' : 'warning');
+
+      showBreakingNewsPopup({
+        category: shockSector,
+        tag: isUp ? '거시 호재 ▲' : '거시 악재 ▼',
+        impact: isUp ? 'UP' : 'DOWN',
+        rate: rateStr,
+        title: `[경제 쇼크 속보] ${title}`,
+        summary: `${msg}\n시장 전반의 투자 심리가 즉각 반응하며 관련 기업들의 주가에 큰 폭의 등락이 반영되었습니다.`,
+        relatedCodes: relatedCodes
+      });
+
+      renderStockList();
+      updateSelectedStockView();
+      calculateAssets();
+      renderPortfolio();
+      renderTeacherRanking();
+
+      // 🌐 거시경제 쇼크를 모든 학생 화면에 동시 전파
+      if (broadcast) {
+        broadcastNetworkMessage('MARKET_SHOCK', { shockType: type });
       }
     }
 
