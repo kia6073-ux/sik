@@ -874,6 +874,69 @@
     </div>
   </div>
 
+  <!-- 7. 긴급 마켓 속보 기사 팝업 모달 (호재/악재/거시쇼크 발생 시 학생 화면 전면 팝업) -->
+  <div id="breakingNewsModal" class="hidden fixed inset-0 bg-slate-950/80 backdrop-blur-md z-[60] flex items-center justify-center p-3 animate-in fade-in zoom-in-95 duration-200">
+    <div id="breakingNewsCard" class="bg-white rounded-2xl border-2 border-rose-500 shadow-2xl max-w-lg w-full p-4 md:p-5 text-left flex flex-col gap-3">
+      <!-- 속보 헤더 바 -->
+      <div class="flex items-center justify-between pb-2 border-b border-slate-100">
+        <div class="flex items-center gap-2">
+          <div id="breakingNewsHeaderIcon" class="w-8 h-8 rounded-xl bg-rose-600 text-white flex items-center justify-center text-sm font-black shadow-md animate-pulse">
+            <i class="fa-solid fa-bolt"></i>
+          </div>
+          <div>
+            <div class="flex items-center gap-1.5">
+              <span class="text-xs font-black tracking-tight text-slate-900">KRX 긴급 마켓 속보</span>
+              <span id="breakingNewsImpactBadge" class="px-2 py-0.5 rounded text-[10px] font-black bg-rose-100 text-rose-700 border border-rose-200">호재 ▲ +15%</span>
+            </div>
+            <span id="breakingNewsTimeText" class="text-[10px] font-mono text-slate-400">방금 전 속보 발령</span>
+          </div>
+        </div>
+        <button onclick="closeBreakingNewsModal()" class="w-7 h-7 rounded-lg bg-slate-100 hover:bg-slate-200 text-slate-500 hover:text-slate-800 flex items-center justify-center transition">
+          <i class="fa-solid fa-xmark text-xs"></i>
+        </button>
+      </div>
+
+      <!-- 뉴스 헤드라인 타이틀 -->
+      <div>
+        <h3 id="breakingNewsTitle" class="text-base md:text-lg font-black text-slate-900 leading-snug tracking-tight">
+          [속보] 엔비디아 AI 칩 차세대 HBM 주문 폭주
+        </h3>
+      </div>
+
+      <!-- 심층 기사 분석 본문 -->
+      <div class="bg-slate-50 p-3 rounded-xl border border-slate-200 text-slate-700 space-y-1.5">
+        <div class="flex items-center gap-1 text-[11px] font-bold text-slate-500">
+          <i class="fa-regular fa-newspaper text-indigo-600"></i>
+          <span>경제 분석 특보 기사</span>
+        </div>
+        <p id="breakingNewsContent" class="text-xs font-medium leading-relaxed text-slate-800">
+          글로벌 빅테크의 AI 서버 투자 확대로 HBM 메모리와 관련 장비 주문이 폭증하며 관련 기업들의 주가와 실적이 가파르게 상승하고 있습니다.
+        </p>
+      </div>
+
+      <!-- 관련 영향 종목 안내 뱃지 묶음 (화면 이동 없는 단순 정보 표시) -->
+      <div>
+        <div class="flex items-center justify-between mb-1.5">
+          <span class="text-[11px] font-black text-slate-700 flex items-center gap-1">
+            <i class="fa-solid fa-tags text-indigo-600"></i>
+            <span id="breakingNewsStockLabel">관련 영향 기업 안내:</span>
+          </span>
+          <span class="text-[10px] text-slate-400 font-medium">좌측 종목 탐색기에서 직접 검색 가능</span>
+        </div>
+        <div id="breakingNewsStocksList" class="flex flex-wrap gap-1.5"></div>
+      </div>
+
+      <!-- 하단 닫기 버튼 및 자동 타이머 안내 -->
+      <div class="pt-2 border-t border-slate-100 flex items-center justify-between gap-2">
+        <span id="breakingNewsTimerNotice" class="text-[10px] font-mono text-slate-400">12초 후 자동으로 닫힙니다</span>
+        <button onclick="closeBreakingNewsModal()" class="px-4 py-2 rounded-xl bg-slate-900 hover:bg-slate-800 text-white font-black text-xs transition active:scale-95 shadow-md flex items-center gap-1.5">
+          <span>기사 확인 완료 (창 닫기)</span>
+          <i class="fa-solid fa-check text-[10px]"></i>
+        </button>
+      </div>
+    </div>
+  </div>
+
   <!-- 토스트 메시지 컨테이너 -->
   <div id="toastContainer" class="fixed bottom-3 right-3 z-50 flex flex-col gap-1.5 pointer-events-none"></div>
 
@@ -924,6 +987,12 @@
       playKickSound() {
         this.playTone(220, 0.18, 'sawtooth', 0.3);
         setTimeout(() => this.playTone(164.81, 0.35, 'sawtooth', 0.35), 120);
+      },
+      playBreakingNews() {
+        this.playTone(523.25, 0.1, 'square', 0.25);
+        setTimeout(() => this.playTone(659.25, 0.1, 'square', 0.25), 90);
+        setTimeout(() => this.playTone(783.99, 0.15, 'sine', 0.3), 180);
+        setTimeout(() => this.playTone(1046.50, 0.3, 'sine', 0.35), 290);
       }
     };
 
@@ -1292,6 +1361,15 @@
         if (data.lastShock && data.lastShock.timestamp !== window.lastAppliedShockTime) {
           window.lastAppliedShockTime = data.lastShock.timestamp;
           applyMarketShockEffect(data.lastShock.type, false);
+        }
+        if (data.lastSectorCatalyst && data.lastSectorCatalyst.timestamp !== window.lastAppliedSectorTime) {
+          window.lastAppliedSectorTime = data.lastSectorCatalyst.timestamp;
+          applySectorCatalystEffect(
+            data.lastSectorCatalyst.catalystId,
+            data.lastSectorCatalyst.isGood,
+            data.lastSectorCatalyst.sectorId,
+            false
+          );
         }
         if (Array.isArray(data.bannedStudents)) {
           bannedStudents = data.bannedStudents;
@@ -2828,15 +2906,108 @@
       }
     }
 
+    let breakingNewsTimer = null;
+    let breakingNewsSecondsLeft = 12;
+
+    function showBreakingNewsPopup({ category, tag, impact, rate, title, summary, relatedCodes }) {
+      const modal = document.getElementById('breakingNewsModal');
+      const card = document.getElementById('breakingNewsCard');
+      const headerIcon = document.getElementById('breakingNewsHeaderIcon');
+      const impactBadge = document.getElementById('breakingNewsImpactBadge');
+      const titleEl = document.getElementById('breakingNewsTitle');
+      const contentEl = document.getElementById('breakingNewsContent');
+      const stockLabel = document.getElementById('breakingNewsStockLabel');
+      const stocksList = document.getElementById('breakingNewsStocksList');
+      const timerNotice = document.getElementById('breakingNewsTimerNotice');
+      const timeText = document.getElementById('breakingNewsTimeText');
+
+      if (!modal) return;
+
+      const isUp = impact === 'UP';
+      const now = new Date();
+      if (timeText) {
+        timeText.textContent = `${String(now.getHours()).padStart(2, '0')}:${String(now.getMinutes()).padStart(2, '0')}:${String(now.getSeconds()).padStart(2, '0')} 속보 발령`;
+      }
+
+      if (isUp) {
+        card.className = 'bg-white rounded-2xl border-2 border-rose-500 shadow-2xl shadow-rose-500/20 max-w-lg w-full p-4 md:p-5 text-left flex flex-col gap-3';
+        headerIcon.className = 'w-8 h-8 rounded-xl bg-rose-600 text-white flex items-center justify-center text-sm font-black shadow-md animate-pulse';
+        headerIcon.innerHTML = '<i class="fa-solid fa-arrow-trend-up"></i>';
+        impactBadge.className = 'px-2 py-0.5 rounded text-[10px] font-black bg-rose-100 text-rose-700 border border-rose-200';
+        impactBadge.textContent = `${category} · ${tag} (${rate})`;
+        stockLabel.textContent = '📈 주요 수혜 업종 및 관련 기업:';
+      } else {
+        card.className = 'bg-white rounded-2xl border-2 border-blue-500 shadow-2xl shadow-blue-500/20 max-w-lg w-full p-4 md:p-5 text-left flex flex-col gap-3';
+        headerIcon.className = 'w-8 h-8 rounded-xl bg-blue-600 text-white flex items-center justify-center text-sm font-black shadow-md animate-pulse';
+        headerIcon.innerHTML = '<i class="fa-solid fa-arrow-trend-down"></i>';
+        impactBadge.className = 'px-2 py-0.5 rounded text-[10px] font-black bg-blue-100 text-blue-700 border border-blue-200';
+        impactBadge.textContent = `${category} · ${tag} (${rate})`;
+        stockLabel.textContent = '📉 피해 우려 업종 및 관련 기업:';
+      }
+
+      titleEl.textContent = title;
+      contentEl.textContent = summary;
+
+      if (stocksList) {
+        const stocks = (relatedCodes || [])
+          .map(code => ALL_STOCKS.find(s => s.id === code))
+          .filter(Boolean);
+
+        if (stocks.length > 0) {
+          // 클릭 시 이동하지 않고 단순 참고용 뱃지로 렌더링
+          stocksList.innerHTML = stocks.map(s => {
+            const stockUp = s.diff >= 0;
+            return `
+              <div class="px-2.5 py-1.5 rounded-lg bg-slate-100 border border-slate-200 text-slate-800 text-xs font-black flex items-center gap-1.5 shadow-2xs select-none">
+                <span>${s.icon}</span>
+                <span>${s.name}</span>
+                <span class="font-mono text-[11px] ${stockUp ? 'text-rose-600' : 'text-blue-600'}">${s.price.toLocaleString()}원</span>
+              </div>
+            `;
+          }).join('');
+        } else {
+          stocksList.innerHTML = `<span class="text-xs text-slate-400 font-medium">소속 전 종목 일괄 반영</span>`;
+        }
+      }
+
+      modal.classList.remove('hidden');
+      SoundFX.playBreakingNews();
+
+      if (breakingNewsTimer) clearInterval(breakingNewsTimer);
+      breakingNewsSecondsLeft = 12;
+      if (timerNotice) timerNotice.textContent = `${breakingNewsSecondsLeft}초 후 자동으로 닫힙니다`;
+
+      breakingNewsTimer = setInterval(() => {
+        breakingNewsSecondsLeft--;
+        if (timerNotice) timerNotice.textContent = `${breakingNewsSecondsLeft}초 후 자동으로 닫힙니다`;
+        if (breakingNewsSecondsLeft <= 0) {
+          closeBreakingNewsModal();
+        }
+      }, 1000);
+    }
+
+    function closeBreakingNewsModal() {
+      if (breakingNewsTimer) {
+        clearInterval(breakingNewsTimer);
+        breakingNewsTimer = null;
+      }
+      const modal = document.getElementById('breakingNewsModal');
+      if (modal) modal.classList.add('hidden');
+    }
+
     function triggerSectorCatalyst(catalystId, isGood) {
-      const sectorData = SECTOR_CATALYSTS[teacherTargetSectorId];
+      applySectorCatalystEffect(catalystId, isGood, teacherTargetSectorId, true);
+    }
+
+    function applySectorCatalystEffect(catalystId, isGood, sectorId, broadcast = true) {
+      const sectorData = SECTOR_CATALYSTS[sectorId];
       if (!sectorData) return;
 
       const catalystList = isGood ? sectorData.good : sectorData.bad;
       const cat = catalystList.find(c => c.id === catalystId);
       if (!cat) return;
 
-      const sectorStocks = ALL_STOCKS.filter(s => s.cat === teacherTargetSectorId);
+      const sectorStocks = ALL_STOCKS.filter(s => s.cat === sectorId);
       if (!sectorStocks.length) return;
 
       sectorStocks.forEach(stock => {
@@ -2858,28 +3029,50 @@
 
       const avgMove = isGood ? Math.round((cat.mult - 1) * 100) : Math.round((1 - cat.mult) * 100);
       const sign = isGood ? '+' : '-';
-      const tagText = isGood ? `${teacherTargetSectorId} 호재 ▲` : `${teacherTargetSectorId} 악재 ▼`;
+      const tagText = isGood ? '업종 호재 ▲' : '업종 악재 ▼';
+
+      const relatedIds = sectorStocks.slice(0, 4).map(s => s.id);
 
       MARKET_NEWS_DATABASE.unshift({
         id: `SECTOR_NEWS_${Date.now()}`,
-        cat: teacherTargetSectorId,
+        cat: sectorId,
         tag: tagText,
         impact: isGood ? 'UP' : 'DOWN',
-        title: `[업종속보] ${cat.name} (${teacherTargetSectorId} 전 종목 ${sign}${avgMove}%)`,
+        title: `[업종속보] ${cat.name} (${sectorId} 전 종목 ${sign}${avgMove}%)`,
         summary: cat.desc,
-        relatedCodes: sectorStocks.slice(0, 3).map(s => s.id)
+        relatedCodes: relatedIds
       });
       renderTopNewsItem(0);
 
-      showNewsBanner(`📢 [${teacherTargetSectorId} 업종 속보] ${cat.name} (${sign}${avgMove}%)`);
-      showToast(`${isGood ? '📈 업종 호재 발동' : '📉 업종 악재 발동'} · ${teacherTargetSectorId}`, `${cat.name}`, isGood ? 'success' : 'warning');
-      SoundFX.playTone(isGood ? 783.99 : 311.13, 0.25, isGood ? 'sine' : 'sawtooth', 0.3);
+      showNewsBanner(`📢 [${sectorId} 업종 속보] ${cat.name} (${sign}${avgMove}%)`);
+      showToast(`${isGood ? '📈 업종 호재 발동' : '📉 업종 악재 발동'} · ${sectorId}`, `${cat.name}`, isGood ? 'success' : 'warning');
+
+      showBreakingNewsPopup({
+        category: sectorId,
+        tag: tagText,
+        impact: isGood ? 'UP' : 'DOWN',
+        rate: `${sign}${avgMove}%`,
+        title: `[${sectorId} 긴급속보] ${cat.name}`,
+        summary: `${sectorId} 업종 전반에 걸쳐 중대한 시장 상황이 발생했습니다.\n${cat.desc}\n소속 기업 ${sectorStocks.length}개사의 시장 가격에 즉시 ${sign}${avgMove}% 수준의 주가 변동이 반영되었습니다.`,
+        relatedCodes: relatedIds
+      });
 
       updateSelectedStockView();
       calculateAssets();
       renderStockList();
       renderPortfolio();
       renderTeacherRanking();
+
+      if (broadcast) {
+        broadcastMarketStateToCloud({
+          lastSectorCatalyst: {
+            catalystId,
+            isGood,
+            sectorId,
+            timestamp: Date.now()
+          }
+        });
+      }
     }
 
     function teacherToggleMarketControl() {
@@ -2951,10 +3144,12 @@
       let isUp = true;
       let shockSector = '거시경제';
       let relatedCodes = [];
+      let rateStr = '';
 
       if (type === 'BOOM_KFOOD') {
         shockSector = '식품/외식';
-        relatedCodes = ['003230', '004370', '271560'];
+        rateStr = '+15%';
+        relatedCodes = ['003230', '004370', '271560', '097950'];
         ALL_STOCKS.filter(s => s.cat === '식품/외식' || s.cat === '게임/엔터').forEach(s => {
           const mult = 1.13 + (Math.random() * 0.04);
           s.price = Math.min(s.limitHigh, alignToKrxTick(s.price * mult));
@@ -2963,11 +3158,12 @@
           s.history.push(s.price);
         });
         title = '🍜 K-푸드 글로벌 열풍';
-        msg = '수출 신기록 달성! 식품 및 문화 엔터테인먼트 관련주가 급등합니다.';
+        msg = '불닭볶음면·만두 등 글로벌 품절 대란! 해외 수출 신기록 달성으로 음식료 기업의 실적이 급증합니다.';
         isUp = true;
       } else if (type === 'BOOM_AI_TECH') {
         shockSector = 'IT/반도체';
-        relatedCodes = ['005930', '000660', '042700'];
+        rateStr = '+16%';
+        relatedCodes = ['005930', '000660', '042700', '058470'];
         ALL_STOCKS.filter(s => s.cat === 'IT/반도체').forEach(s => {
           const mult = 1.14 + (Math.random() * 0.05);
           s.price = Math.min(s.limitHigh, alignToKrxTick(s.price * mult));
@@ -2975,12 +3171,13 @@
           s.rate = Number(((s.diff / s.base) * 100).toFixed(2));
           s.history.push(s.price);
         });
-        title = '🤖 AI 반도체 수주 잭팟';
-        msg = '차세대 HBM 독점 공급 체결! IT/반도체주가 강세를 보입니다.';
+        title = '🤖 AI 반도체 잭팟';
+        msg = '빅테크의 AI 서버 투자 확대로 HBM 메모리와 차세대 본더 장비 독점 공급 계약이 체결되었습니다.';
         isUp = true;
       } else if (type === 'BOOM_BATTERY') {
         shockSector = '2차전지';
-        relatedCodes = ['373220', '003670', '247540'];
+        rateStr = '+14%';
+        relatedCodes = ['373220', '003670', '247540', '006400'];
         ALL_STOCKS.filter(s => s.cat === '2차전지' || s.cat === '모빌리티').forEach(s => {
           const mult = 1.12 + (Math.random() * 0.04);
           s.price = Math.min(s.limitHigh, alignToKrxTick(s.price * mult));
@@ -2989,11 +3186,12 @@
           s.history.push(s.price);
         });
         title = '🔋 2차전지 초대형 공급계약';
-        msg = '글로벌 완성차 배터리 장기 계약 성사로 2차전지 관련주 급상승!';
+        msg = '북미 글로벌 완성차 제조사와 수십조 원 규모의 전기차 배터리 장기 납품 계약이 전격 성사되었습니다.';
         isUp = true;
       } else if (type === 'BOOM_BIO_FDA') {
         shockSector = '바이오';
-        relatedCodes = ['000100', '207940', '196170'];
+        rateStr = '+18%';
+        relatedCodes = ['000100', '207940', '196170', '128940'];
         ALL_STOCKS.filter(s => s.cat === '바이오').forEach(s => {
           const mult = 1.16 + (Math.random() * 0.06);
           s.price = Math.min(s.limitHigh, alignToKrxTick(s.price * mult));
@@ -3002,11 +3200,12 @@
           s.history.push(s.price);
         });
         title = '🧬 바이오 FDA 품목승인';
-        msg = '토종 항암 신약의 미국 FDA 최종 승인으로 바이오주 상한가 육박!';
+        msg = '국산 토종 항암 신약이 미국 FDA 최종 품목허가를 취득하며 글로벌 제약 시장 처방이 본격화됩니다.';
         isUp = true;
       } else if (type === 'CRASH_RATE_HIKE') {
         shockSector = '거시경제';
-        relatedCodes = ['035420', '035720', '259960'];
+        rateStr = '-14%';
+        relatedCodes = ['035420', '035720', '259960', '352820'];
         ALL_STOCKS.filter(s => s.cat === 'IT/반도체' || s.cat === '게임/엔터').forEach(s => {
           const mult = 0.86 - (Math.random() * 0.04);
           s.price = Math.max(s.limitLow, alignToKrxTick(s.price * mult));
@@ -3015,11 +3214,12 @@
           s.history.push(s.price);
         });
         title = '📉 기준금리 전격 인상';
-        msg = '물가 불안에 따른 긴급 금리 인상으로 기술·성장주가 급락합니다.';
+        msg = '물가 급등 우려로 중앙은행이 기준금리를 기습 인상하며 미래 성장 가치가 큰 IT·게임주가 급락합니다.';
         isUp = false;
       } else if (type === 'CRASH_OIL_SHOCK') {
         shockSector = '모빌리티';
-        relatedCodes = ['003490', '011200', '005380'];
+        rateStr = '-13%';
+        relatedCodes = ['003490', '011200', '005380', '028260'];
         ALL_STOCKS.filter(s => s.cat === '모빌리티' || s.cat === '뷰티/유통').forEach(s => {
           const mult = 0.87 - (Math.random() * 0.04);
           s.price = Math.max(s.limitLow, alignToKrxTick(s.price * mult));
@@ -3028,11 +3228,12 @@
           s.history.push(s.price);
         });
         title = '🛢️ 국제 유가/물류비 폭등';
-        msg = '해상 운임 및 항공유 급등으로 항공·해운·유통주 마진이 악화됩니다.';
+        msg = '중동 분쟁으로 국제 유가와 해상 운임이 폭등해 항공사 유류비 부담과 유통·제조업 물류비가 폭증합니다.';
         isUp = false;
       } else if (type === 'CRASH_FOOD_COST') {
         shockSector = '식품/외식';
-        relatedCodes = ['004370', '007310', '271560'];
+        rateStr = '-13%';
+        relatedCodes = ['004370', '007310', '271560', '005180'];
         ALL_STOCKS.filter(s => s.cat === '식품/외식').forEach(s => {
           const mult = 0.88 - (Math.random() * 0.04);
           s.price = Math.max(s.limitLow, alignToKrxTick(s.price * mult));
@@ -3041,11 +3242,12 @@
           s.history.push(s.price);
         });
         title = '🌾 국제 곡물 원가 쇼크';
-        msg = '밀, 팜유 가격 급등으로 식품 제조업체들의 주가가 하락합니다.';
+        msg = '이상기후로 밀가루·팜유·대두 가격이 치솟아 라면, 과자, 가공식품 제조사들의 영업이익이 급감합니다.';
         isUp = false;
       } else if (type === 'CRASH_SUPPLY_CHAIN') {
         shockSector = '2차전지';
-        relatedCodes = ['373220', '086520', '005490'];
+        rateStr = '-14%';
+        relatedCodes = ['373220', '086520', '005490', '066970'];
         ALL_STOCKS.filter(s => s.cat === '2차전지').forEach(s => {
           const mult = 0.86 - (Math.random() * 0.04);
           s.price = Math.max(s.limitLow, alignToKrxTick(s.price * mult));
@@ -3054,7 +3256,7 @@
           s.history.push(s.price);
         });
         title = '⚡ 핵심 광물 수출 통제';
-        msg = '리튬 등 원자재 수급 비상으로 2차전지 소재주가 일제히 하락합니다.';
+        msg = '주요 자원 보유국이 핵심 배터리 원자재(리튬·니켈) 수출을 통제하여 생산 비용이 치솟습니다.';
         isUp = false;
       }
 
@@ -3071,7 +3273,16 @@
 
       showNewsBanner(`[시장 쇼크] ${title}: ${msg}`);
       showToast(title, msg, isUp ? 'success' : 'warning');
-      SoundFX.playTone(isUp ? 659.25 : 329.63, 0.25, isUp ? 'sine' : 'sawtooth', 0.3);
+
+      showBreakingNewsPopup({
+        category: shockSector,
+        tag: isUp ? '거시 호재 ▲' : '거시 악재 ▼',
+        impact: isUp ? 'UP' : 'DOWN',
+        rate: rateStr,
+        title: `[경제 쇼크 속보] ${title}`,
+        summary: `${msg}\n시장 전반의 투자 심리가 즉각 반응하며 관련 기업들의 주가에 큰 폭의 등락이 반영되었습니다.`,
+        relatedCodes: relatedCodes
+      });
 
       renderStockList();
       updateSelectedStockView();
