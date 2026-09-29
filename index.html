@@ -572,6 +572,22 @@
         </button>
       </div>
 
+      <!-- 연결 대상 주소 선택 (자체 서버 / 깃허브) -->
+      <div class="w-full bg-indigo-50/70 p-2.5 rounded-2xl border border-indigo-100 flex items-center justify-between gap-2 flex-wrap">
+        <div class="flex items-center gap-1.5">
+          <span class="w-2 h-2 rounded-full bg-emerald-500 animate-pulse"></span>
+          <span class="text-xs font-black text-indigo-950">연결 대상 주소 (서버 선택):</span>
+        </div>
+        <div class="flex items-center gap-1">
+          <button type="button" id="btnQrUrlModeCurrent" onclick="setQrUrlMode('current')" class="px-2.5 py-1 rounded-lg text-xs font-black transition cursor-pointer bg-indigo-600 text-white shadow-xs">
+            실시간 연동 서버 (클라우드)
+          </button>
+          <button type="button" id="btnQrUrlModeGithub" onclick="setQrUrlMode('github')" class="px-2.5 py-1 rounded-lg text-xs font-black transition cursor-pointer bg-white text-slate-700 border border-slate-200 hover:bg-slate-50">
+            깃허브 페이지 (외부)
+          </button>
+        </div>
+      </div>
+
       <div class="w-full bg-slate-50 p-2.5 rounded-2xl border border-slate-200">
         <div class="text-xs font-black text-slate-700 mb-1.5 text-left">학급(반) 선택:</div>
         <div class="flex flex-wrap gap-1.5" id="qrClassPills"></div>
@@ -1041,6 +1057,33 @@
     };
 
     const myClientId = 'cli_' + Math.random().toString(36).substr(2, 9);
+    const SERVER_BASE_URL = "https://ais-dev-jju67eqpkyezxpp642nufv-430307346834.asia-northeast1.run.app";
+    const GITHUB_PAGES_URL = "https://kia6073-ux.github.io/sik/";
+    let qrUrlMode = 'current';
+
+    function setQrUrlMode(mode) {
+      qrUrlMode = mode;
+      const btnCur = document.getElementById('btnQrUrlModeCurrent');
+      const btnGit = document.getElementById('btnQrUrlModeGithub');
+      if (btnCur && btnGit) {
+        if (mode === 'current') {
+          btnCur.className = 'px-2.5 py-1 rounded-lg text-xs font-black transition cursor-pointer bg-indigo-600 text-white shadow-xs';
+          btnGit.className = 'px-2.5 py-1 rounded-lg text-xs font-black transition cursor-pointer bg-white text-slate-700 border border-slate-200 hover:bg-slate-50';
+        } else {
+          btnCur.className = 'px-2.5 py-1 rounded-lg text-xs font-black transition cursor-pointer bg-white text-slate-700 border border-slate-200 hover:bg-slate-50';
+          btnGit.className = 'px-2.5 py-1 rounded-lg text-xs font-black transition cursor-pointer bg-indigo-600 text-white shadow-xs';
+        }
+      }
+      renderQRCodeCanvas();
+    }
+
+    function getBackendUrl() {
+      if (window.location && window.location.origin && window.location.origin.includes('ais-dev-')) {
+        return window.location.origin;
+      }
+      return SERVER_BASE_URL;
+    }
+
     let SEED_MONEY = 10000000;
     let student = {
       id: '',
@@ -1072,6 +1115,7 @@
     let centerCurrentTab = 'chart';
     let lastNewsWasGood = false;
     let newsEngineTimer = null;
+    let ws = null;
     let mqttClient = null;
     let broadcastChannel = null;
 
@@ -1194,7 +1238,26 @@
 
       if (selectedStockId === stockId) {
         selectStock(selectedStockId);
+      } else {
+        renderStockList();
       }
+      updateAssets();
+    }
+
+    function applyBatchPriceChanges(stockUpdates) {
+      if (!Array.isArray(stockUpdates) || stockUpdates.length === 0) return;
+      stockUpdates.forEach(({ id, mult }) => {
+        const s = ALL_STOCKS.find(st => st.id === id);
+        if (s) {
+          s.price = Math.max(s.limitLow, Math.min(s.limitHigh, alignToKrxTick(s.price * mult)));
+          s.diff = s.price - s.base;
+          s.rate = Number(((s.diff / s.base) * 100).toFixed(2));
+          s.history.push(s.price);
+          if (s.history.length > 50) s.history.shift();
+        }
+      });
+      selectStock(selectedStockId);
+      renderStockList();
       updateAssets();
     }
 
@@ -1840,8 +1903,80 @@
         };
       } catch (e) {}
 
-      // 2. 공용 보안 WebSocket MQTT 브로커 연동 (선생님 PC ↔ 학생 스마트폰 간 실시간 연결)
+      // 2. 자체 서버 (Cloud Run) WebSocket 및 REST API 연동
+      const serverUrl = getBackendUrl();
+      const wsProto = serverUrl.startsWith('https') ? 'wss:' : 'ws:';
+      const wsHost = serverUrl.replace(/^https?:\/\//, '').replace(/\/.*$/, '');
+      connectBackendWs(wsProto, wsHost);
+      pollBackendState(serverUrl);
+      setInterval(() => pollBackendState(serverUrl), 3000);
+
+      // 3. 공용 백업 MQTT 브로커 연동 (슬립 방지 및 무중단 동기화)
       connectMqtt();
+    }
+
+    function connectBackendWs(proto, host) {
+      try {
+        ws = new WebSocket(`${proto}//${host}/ws?room=${encodeURIComponent(selectedClass)}`);
+        ws.onopen = () => {
+          ws.send(JSON.stringify({
+            type: 'JOIN_ROOM',
+            payload: {
+              room: selectedClass,
+              isTeacher: isTeacherMode,
+              student: (student.name && student.name !== '선생님 (교사)') ? student : null
+            }
+          }));
+        };
+        ws.onmessage = (e) => {
+          try {
+            const data = JSON.parse(e.data);
+            if (data && data.senderId !== myClientId) {
+              handleIncomingMessage(data);
+            }
+          } catch (err) {}
+        };
+        ws.onclose = () => {
+          setTimeout(() => connectBackendWs(proto, host), 3500);
+        };
+      } catch (err) {}
+    }
+
+    async function pollBackendState(serverUrl) {
+      try {
+        const res = await fetch(`${serverUrl}/api/room/` + encodeURIComponent(selectedClass));
+        if (res.ok) {
+          const data = await res.json();
+          if (data && Array.isArray(data.students)) {
+            const valid = data.students.filter(s => s.name !== '선생님 (교사)' && !s.id?.startsWith('teacher_'));
+            valid.forEach(std => {
+              const idx = classroomStudents.findIndex(s => s.id === std.id);
+              if (idx >= 0) classroomStudents[idx] = std;
+              else classroomStudents.push(std);
+            });
+            updateTeacherRankingTable();
+          }
+          if (data && Array.isArray(data.bannedStudents)) {
+            data.bannedStudents.forEach(b => {
+              if (!bannedStudents.some(item => item.id === b.id)) bannedStudents.push(b);
+            });
+            updateTeacherRankingTable();
+          }
+          if (data && !isTeacherMode) {
+            if (data.marketState && data.marketState !== marketState) {
+              marketState = data.marketState;
+              updateTimerDisplay();
+            }
+            if (typeof data.marketSeconds === 'number') {
+              marketSeconds = data.marketSeconds;
+              updateTimerDisplay();
+            }
+            if (typeof data.seedMoney === 'number' && data.seedMoney !== SEED_MONEY) {
+              setSeedMoney(data.seedMoney);
+            }
+          }
+        }
+      } catch (err) {}
     }
 
     function connectMqtt() {
@@ -1882,7 +2017,20 @@
       try {
         if (broadcastChannel) broadcastChannel.postMessage(msg);
       } catch (e) {}
-      // 2. MQTT
+
+      // 2. 자체 서버 WebSocket 및 REST API 전송
+      if (ws && ws.readyState === WebSocket.OPEN) {
+        try { ws.send(JSON.stringify(msg)); } catch (err) {}
+      } else {
+        const sUrl = getBackendUrl();
+        fetch(`${sUrl}/api/room/` + encodeURIComponent(selectedClass) + '/sync', {
+          method: 'POST',
+          headers: { 'Content-Type': 'application/json' },
+          body: JSON.stringify(msg)
+        }).catch(() => {});
+      }
+
+      // 3. MQTT 브로커 전송
       try {
         if (mqttClient && mqttClient.isConnected()) {
           const message = new Paho.MQTT.Message(JSON.stringify(msg));
@@ -1930,7 +2078,9 @@
         }
       } else if (type === 'AUTO_NEWS_EVENT' && payload?.news) {
         pushNewsToHistory(payload.news);
-        if (payload.stockId && payload.rateMult) {
+        if (payload.stockUpdates && Array.isArray(payload.stockUpdates)) {
+          applyBatchPriceChanges(payload.stockUpdates);
+        } else if (payload.stockId && payload.rateMult) {
           applyPriceChangeToStock(payload.stockId, payload.rateMult);
         }
       } else if (type === 'SUBSIDY_GIVE' && payload?.amount) {
@@ -2149,6 +2299,7 @@
       const rateStr = isGood ? '+15%' : '-15%';
 
       applyPriceChangeToStock(targetStock.id, mult);
+      selectStock(targetStock.id);
 
       const newsData = {
         id: 'news_direct_' + Date.now(),
@@ -2169,7 +2320,12 @@
       };
 
       pushNewsToHistory(newsData);
-      broadcastMsg('AUTO_NEWS_EVENT', { news: newsData, stockId: targetStock.id, rateMult: mult });
+      broadcastMsg('AUTO_NEWS_EVENT', {
+        news: newsData,
+        stockId: targetStock.id,
+        rateMult: mult,
+        stockUpdates: [{ id: targetStock.id, mult }]
+      });
       showToast(`[발동] ${targetStock.name} ${rateStr} 주가 변동 및 공시를 발령했습니다.`, isGood ? 'success' : 'error');
     }
 
@@ -2196,19 +2352,19 @@
         <div class="flex items-center gap-2">
           <span class="text-2xl">${sData.icon}</span>
           <div>
-            <span class="font-black text-indigo-950 text-xs">${sData.name} 대표 기업군</span>
+            <span class="font-black text-indigo-950 text-xs">${currentTeacherSector} 대표 기업군</span>
             <div class="text-[11px] text-slate-500 font-medium">${sData.stocksHint}</div>
           </div>
         </div>
         <span class="text-[11px] font-black text-indigo-700 bg-white px-2 py-1 rounded-lg border border-indigo-200">업종별 제어</span>
       `;
 
-      document.getElementById('labelSectorGood').textContent = `[${sData.name}] 호재 4종 (소속 종목 일제히 상승)`;
-      document.getElementById('labelSectorBad').textContent = `[${sData.name}] 악재 4종 (소속 종목 일제히 하락)`;
+      document.getElementById('labelSectorGood').textContent = `[${currentTeacherSector}] 호재 4종 (소속 종목 일제히 상승)`;
+      document.getElementById('labelSectorBad').textContent = `[${currentTeacherSector}] 악재 4종 (소속 종목 일제히 하락)`;
 
       const goodGrid = document.getElementById('gridSectorGood');
       goodGrid.innerHTML = sData.good.map(cat => `
-        <button onclick='applySectorCatalystDirect("${sData.name}", ${JSON.stringify(cat)}, true)' class="p-3 rounded-2xl bg-white hover:bg-rose-50 border border-rose-200 text-left transition shadow-2xs flex flex-col justify-between cursor-pointer">
+        <button onclick='applySectorCatalystDirect("${currentTeacherSector}", ${JSON.stringify(cat)}, true)' class="p-3 rounded-2xl bg-white hover:bg-rose-50 border border-rose-200 text-left transition shadow-2xs flex flex-col justify-between cursor-pointer">
           <div>
             <div class="flex items-center justify-between gap-1 pb-1 border-b border-rose-100">
               <span class="font-black text-xs text-rose-700 leading-snug">${cat.name}</span>
@@ -2222,7 +2378,7 @@
 
       const badGrid = document.getElementById('gridSectorBad');
       badGrid.innerHTML = sData.bad.map(cat => `
-        <button onclick='applySectorCatalystDirect("${sData.name}", ${JSON.stringify(cat)}, false)' class="p-3 rounded-2xl bg-white hover:bg-blue-50 border border-blue-200 text-left transition shadow-2xs flex flex-col justify-between cursor-pointer">
+        <button onclick='applySectorCatalystDirect("${currentTeacherSector}", ${JSON.stringify(cat)}, false)' class="p-3 rounded-2xl bg-white hover:bg-blue-50 border border-blue-200 text-left transition shadow-2xs flex flex-col justify-between cursor-pointer">
           <div>
             <div class="flex items-center justify-between gap-1 pb-1 border-b border-blue-100">
               <span class="font-black text-xs text-blue-700 leading-snug">${cat.name}</span>
@@ -2240,23 +2396,32 @@
       renderTeacherSectorCatalysts();
     }
 
-    function applySectorCatalystDirect(secName, cat, isGood) {
+    function applySectorCatalystDirect(secKey, cat, isGood) {
+      const stockUpdates = [];
       ALL_STOCKS.forEach(s => {
-        if (s.cat === secName) {
-          applyPriceChangeToStock(s.id, cat.mult);
+        if (s.cat === secKey) {
+          stockUpdates.push({ id: s.id, mult: cat.mult });
         }
       });
 
+      applyBatchPriceChanges(stockUpdates);
+
+      // 해당 업종의 대표 종목으로 포커스
+      const firstInSector = ALL_STOCKS.find(s => s.cat === secKey);
+      if (firstInSector) {
+        selectStock(firstInSector.id);
+      }
+
       const newsData = {
         id: 'news_sec_' + Date.now(),
-        stockId: '',
-        stockName: secName,
+        stockId: firstInSector ? firstInSector.id : '',
+        stockName: secKey,
         stockIcon: '🏭',
-        stockCat: secName,
-        title: `[업종속보] ${secName} - ${cat.name}`,
+        stockCat: secKey,
+        title: `[업종속보] ${secKey} - ${cat.name}`,
         body1: cat.desc,
-        body2: `${secName} 업종에 소속된 모든 상장 기업들의 시장 가격에 즉시 ${cat.rateStr} 수준의 등락이 반영되었습니다.`,
-        comment: `"산업 전반의 투자 심리에 직접적인 영향을 미칠 것으로 사료됩니다." (산업분석본부)`,
+        body2: `${secKey} 업종에 소속된 상장 기업들(${stockUpdates.length}개사)의 시장 가격에 즉시 ${cat.rateStr} 수준의 등락이 일괄 반영되었습니다.`,
+        comment: `"해당 산업 전반의 투자 심리에 직접적인 영향을 미칠 것으로 사료됩니다." (산업분석본부)`,
         isUp: isGood,
         rateStr: cat.rateStr,
         media: 'KRX 업종 리포트',
@@ -2264,8 +2429,13 @@
       };
 
       pushNewsToHistory(newsData);
-      broadcastMsg('AUTO_NEWS_EVENT', { news: newsData, stockId: null, rateMult: cat.mult });
-      showToast(`[${secName}] 업종 ${cat.rateStr} 등락이 일괄 적용되었습니다.`, isGood ? 'success' : 'error');
+      broadcastMsg('AUTO_NEWS_EVENT', {
+        news: newsData,
+        stockId: null,
+        rateMult: cat.mult,
+        stockUpdates
+      });
+      showToast(`[${secKey}] 업종 소속 ${stockUpdates.length}개사에 ${cat.rateStr} 등락이 일괄 적용되었습니다.`, isGood ? 'success' : 'error');
     }
 
     function renderTeacherShocks() {
@@ -2299,15 +2469,24 @@
     }
 
     function applyMacroShockDirect(shock) {
+      const stockUpdates = [];
       ALL_STOCKS.forEach(s => {
-        if (shock.targetSectors.includes(s.cat) || shock.relatedCodes.includes(s.id)) {
-          applyPriceChangeToStock(s.id, shock.rateMult);
+        if ((shock.targetSectors && shock.targetSectors.includes(s.cat)) || (shock.relatedCodes && shock.relatedCodes.includes(s.id))) {
+          stockUpdates.push({ id: s.id, mult: shock.rateMult });
         }
       });
 
+      applyBatchPriceChanges(stockUpdates);
+
+      // 관련된 대표 종목으로 선택 전환하여 실시간 차트 변동 바로 확인 가능
+      const representative = ALL_STOCKS.find(s => shock.relatedCodes && shock.relatedCodes.includes(s.id));
+      if (representative) {
+        selectStock(representative.id);
+      }
+
       const newsData = {
         id: 'news_macro_' + Date.now(),
-        stockId: '',
+        stockId: representative ? representative.id : '',
         stockName: shock.shockSector,
         stockIcon: '🌐',
         stockCat: '거시경제',
@@ -2322,8 +2501,13 @@
       };
 
       pushNewsToHistory(newsData);
-      broadcastMsg('AUTO_NEWS_EVENT', { news: newsData, stockId: null, rateMult: shock.rateMult });
-      showToast(`[거시쇼크] ${shock.title} 발동 완료`, shock.isUp ? 'success' : 'error');
+      broadcastMsg('AUTO_NEWS_EVENT', {
+        news: newsData,
+        stockId: null,
+        rateMult: shock.rateMult,
+        stockUpdates
+      });
+      showToast(`[거시쇼크] ${shock.title} (${stockUpdates.length}개 종목 ${shock.rateStr}) 적용 완료!`, shock.isUp ? 'success' : 'error');
     }
 
     function updateTeacherRankingTable() {
@@ -2449,7 +2633,7 @@
       pills.innerHTML = classes.map(c => `
         <button onclick="selectQRClass('${c}')" class="px-3 py-1 rounded-xl text-xs font-black transition cursor-pointer ${selectedClass === c ? 'bg-indigo-600 text-white shadow-xs' : 'bg-white text-slate-700 border border-slate-200 hover:bg-slate-100'}">${c}</button>
       `).join('');
-      renderQRCodeCanvas();
+      setQrUrlMode(qrUrlMode);
     }
 
     function selectQRClass(cls) {
@@ -2465,13 +2649,23 @@
 
     function renderQRCodeCanvas() {
       const container = document.getElementById('qrcodeCanvasContainer');
+      if (!container) return;
       container.innerHTML = '';
       document.getElementById('qrTargetClassLabel').textContent = `KRX 모의주식 [${selectedClass}] 입장 QR`;
+      const classNumMatch = selectedClass.match(/\d+/);
+      const classNum = classNumMatch ? classNumMatch[0] : '1';
 
-      const currentUrl = new URL(window.location.href);
-      currentUrl.searchParams.set('room', selectedClass);
-      currentUrl.searchParams.delete('teacher');
-      const targetUrl = currentUrl.toString();
+      // 1. 자체 연동 서버 vs 2. 깃허브 페이지 분기
+      let targetUrl = '';
+      if (qrUrlMode === 'github') {
+        const sep = GITHUB_PAGES_URL.includes('?') ? '&' : '?';
+        targetUrl = `${GITHUB_PAGES_URL}${sep}room=${encodeURIComponent(selectedClass)}&class=${classNum}`;
+      } else {
+        const isHosted = window.location && window.location.protocol && window.location.protocol.startsWith('http') && !window.location.hostname.includes('github.io');
+        const baseHost = isHosted ? (window.location.origin + window.location.pathname) : SERVER_BASE_URL;
+        const sep = baseHost.includes('?') ? '&' : '?';
+        targetUrl = `${baseHost}${sep}room=${encodeURIComponent(selectedClass)}&class=${classNum}`;
+      }
 
       const textEl = document.getElementById('qrFullUrlText');
       if (textEl) textEl.textContent = targetUrl;
