@@ -6,7 +6,7 @@
   <title>실전 모의주식 - 한국거래소(KRX) 정밀 시뮬레이터</title>
   <!-- Tailwind CSS CDN -->
   <script src="https://cdn.tailwindcss.com"></script>
-  <!-- 아이콘 폰트 (Font Awesome) -->
+  <!-- Font Awesome 아이콘 폰트 -->
   <link rel="stylesheet" href="https://cdnjs.cloudflare.com/ajax/libs/font-awesome/6.5.1/css/all.min.css">
   
   <script>
@@ -28,7 +28,7 @@
   </script>
 
   <style>
-    /* 스크롤바 커스텀 */
+    /* 스크롤바 미세 커스텀 */
     ::-webkit-scrollbar { width: 4px; height: 4px; }
     ::-webkit-scrollbar-track { background: #f8fafc; border-radius: 4px; }
     ::-webkit-scrollbar-thumb { background: #cbd5e1; border-radius: 4px; }
@@ -40,17 +40,17 @@
     .num-font { font-feature-settings: "tnum"; font-variant-numeric: tabular-nums; }
     
     @keyframes price-flash-up {
-      0% { background-color: rgba(225, 29, 72, 0.2); }
+      0% { background-color: rgba(225, 29, 72, 0.25); }
       100% { background-color: transparent; }
     }
     @keyframes price-flash-down {
-      0% { background-color: rgba(37, 99, 235, 0.2); }
+      0% { background-color: rgba(37, 99, 235, 0.25); }
       100% { background-color: transparent; }
     }
-    .flash-up { animation: price-flash-up 0.6s ease-out; }
-    .flash-down { animation: price-flash-down 0.6s ease-out; }
+    .flash-up { animation: price-flash-up 0.5s ease-out; }
+    .flash-down { animation: price-flash-down 0.5s ease-out; }
     
-    /* 1페이지 절대 고정 레이아웃 가드 */
+    /* 1화면 절대 고정 레이아웃 */
     html, body {
       height: 100vh;
       width: 100vw;
@@ -63,9 +63,9 @@
 </head>
 <body class="bg-slate-100 text-slate-800 font-sans flex flex-col h-screen w-screen overflow-hidden antialiased">
 
-  <!-- 1. 상단 글로벌 헤더 바 (컴팩트 1페이지 핏) -->
+  <!-- 1. 상단 글로벌 헤더 바 -->
   <header class="h-14 bg-white border-b border-slate-200 px-3.5 flex items-center justify-between flex-shrink-0 z-20 shadow-xs">
-    <!-- 브랜드 로고 & 네트워크 상태 표시 -->
+    <!-- 브랜드 로고 및 상태 표시 -->
     <div class="flex items-center gap-2.5">
       <div class="w-8 h-8 rounded-lg bg-gradient-to-tr from-rose-500 to-indigo-600 flex items-center justify-center text-white shadow-xs text-sm font-black">
         <i class="fa-solid fa-chart-line"></i>
@@ -77,17 +77,18 @@
         </div>
       </div>
 
-      <!-- 네트워크 접속 환경 인디케이터 (온라인 실시간 API vs 교실 오프라인 모드) -->
+      <!-- 엔진 상태 뱃지 -->
       <div class="ml-1.5 hidden sm:flex items-center gap-1.5 bg-slate-50 border border-slate-200 rounded-lg px-2 py-1 text-[11px] font-bold">
         <span id="netStatusDot" class="w-2 h-2 rounded-full bg-emerald-500 animate-pulse"></span>
         <span id="netStatusText" class="text-slate-700">KRX 시뮬레이터 정상</span>
       </div>
     </div>
-    <!-- 실시간 교실 참여 현황 뱃지 (30명 동시접속 모니터링) -->
-    <div id="firebaseLiveBadge" class="hidden xl:flex items-center gap-1.5 px-2 py-1 rounded-lg bg-emerald-50 border border-emerald-200 text-[11px] font-extrabold text-emerald-800">
+
+    <!-- 실시간 교실 참여 인원 (실제 접속자만 집계) -->
+    <div id="liveStudentBadge" class="flex items-center gap-1.5 px-2 py-1 rounded-lg bg-emerald-50 border border-emerald-200 text-[11px] font-extrabold text-emerald-800">
       <i class="fa-solid fa-users text-emerald-600"></i>
-      <span>교실 접속:</span>
-      <span id="headerLiveStudentCount" class="font-mono text-emerald-950 font-black">1</span><span>명 실시간</span>
+      <span>참여 학생:</span>
+      <span id="headerLiveStudentCount" class="font-mono text-emerald-950 font-black">0</span><span>명</span>
       <span class="w-1.5 h-1.5 rounded-full bg-emerald-500 animate-ping"></span>
     </div>
 
@@ -104,7 +105,7 @@
       </div>
     </div>
 
-    <!-- 학생 프로필 정보 및 총 평가자산 요약 -->
+    <!-- 학생 프로필 정보 및 총 자산 요약 -->
     <div class="flex items-center gap-2">
       <button onclick="openLoginModal(true)" class="flex items-center gap-1.5 px-2.5 py-1 rounded-lg bg-indigo-50 hover:bg-indigo-100 border border-indigo-200 text-left transition">
         <div class="w-6 h-6 rounded-md bg-indigo-600 text-white flex items-center justify-center text-[10px] font-black">
@@ -128,7 +129,7 @@
         </div>
       </div>
 
-      <!-- 교사 관제 모달 바로가기 (단축키 Ctrl+1 안내 포함) -->
+      <!-- 교사 관제 모달 (Ctrl+1) -->
       <button onclick="toggleTeacherModal(true)" title="교사용 관제 센터 (단축키: Ctrl + 1)" class="w-7 h-7 rounded-lg bg-slate-100 hover:bg-slate-200 text-slate-600 flex items-center justify-center text-xs transition relative">
         <i class="fa-solid fa-chalkboard-user"></i>
         <span id="teacherKickBadge" class="hidden absolute -top-1 -right-1 w-2.5 h-2.5 bg-rose-500 rounded-full border border-white"></span>
@@ -136,9 +137,8 @@
     </div>
   </header>
 
-  <!-- 1.5. 상단 실시간 마켓 뉴스 티커 (종목 선택 길라잡이) -->
+  <!-- 1.5. 실시간 마켓 뉴스 티커 -->
   <div id="topNewsTickerBar" class="h-8 md:h-8.5 bg-slate-900 border-b border-slate-800 px-3 flex items-center justify-between flex-shrink-0 z-10 text-white shadow-xs select-none">
-    <!-- 좌측: 뉴스 뱃지 & 실시간 펄스 인디케이터 -->
     <div class="flex items-center gap-2 flex-shrink-0">
       <div class="flex items-center gap-1.5 px-2 py-0.5 rounded-md bg-gradient-to-r from-rose-600 to-indigo-600 text-white shadow-2xs">
         <i class="fa-solid fa-bullhorn text-[9px] animate-bounce"></i>
@@ -147,23 +147,20 @@
       <span class="w-2 h-2 rounded-full bg-emerald-400 animate-pulse hidden sm:inline-block" title="실시간 시장 뉴스 수신 중"></span>
     </div>
 
-    <!-- 중앙: 실시간 뉴스 헤드라인 & 관련 종목 원클릭 바로가기 칩 -->
     <div class="flex-1 min-w-0 mx-2 sm:mx-3 flex items-center justify-between">
       <div id="newsItemDisplay" class="flex items-center gap-2 min-w-0 overflow-hidden text-left cursor-pointer" onclick="toggleAllNewsModal(true)" title="클릭 시 전체 뉴스 길라잡이 보기">
         <span id="newsTagBadge" class="px-1.5 py-0.2 rounded text-[9px] font-extrabold bg-rose-500/20 text-rose-300 border border-rose-500/30 flex-shrink-0">AI/반도체</span>
         <span id="newsTitleText" class="text-[11px] font-bold text-slate-200 truncate hover:text-white transition">엔비디아 HBM3E 공급망 주문 폭주... SK하이닉스·한미반도체 수출 실적 기대</span>
       </div>
 
-      <!-- 관련 종목 원클릭 바로가기 버튼 묶음 -->
       <div id="newsStockPills" class="hidden lg:flex items-center gap-1 ml-2 flex-shrink-0"></div>
     </div>
 
-    <!-- 우측: 뉴스 페이지 탐색기 & 전체 뉴스 모달 열기 -->
     <div class="flex items-center gap-1.5 flex-shrink-0 text-slate-400">
       <button onclick="prevNews()" title="이전 뉴스" class="hover:text-white px-1 py-0.5 transition">
         <i class="fa-solid fa-chevron-left text-[10px]"></i>
       </button>
-      <span id="newsCounterText" class="text-[10px] font-mono text-slate-300 num-font">1/12</span>
+      <span id="newsCounterText" class="text-[10px] font-mono text-slate-300 num-font">1/8</span>
       <button onclick="nextNews()" title="다음 뉴스" class="hover:text-white px-1 py-0.5 transition">
         <i class="fa-solid fa-chevron-right text-[10px]"></i>
       </button>
@@ -177,7 +174,7 @@
     </div>
   </div>
 
-  <!-- 긴급 시장 속보 배너 (숨김 기본) -->
+  <!-- 긴급 시장 속보 배너 -->
   <div id="marketNewsBanner" class="hidden h-7 bg-rose-600 text-white px-3 flex items-center justify-between text-xs font-bold shadow-xs z-10 flex-shrink-0">
     <div class="flex items-center gap-2 truncate">
       <span class="px-1.5 py-0.2 rounded bg-white text-rose-600 text-[10px] font-black animate-pulse">KRX 긴급속보</span>
@@ -188,10 +185,10 @@
     </button>
   </div>
 
-  <!-- 2. 1페이지 고정 메인 대시보드 (전체 스크롤 없음, 내부 개별 스크롤) -->
+  <!-- 2. 메인 대시보드 (1화면 핏) -->
   <main class="flex-1 min-h-0 p-2 md:p-2.5 grid grid-cols-12 gap-2 md:gap-2.5 overflow-hidden">
     
-    <!-- ◀ 좌측 컬럼 (3열): 100대 기업 탐색 리스트 -->
+    <!-- 좌측 컬럼: 대표 종목 리스트 탐색기 -->
     <section class="col-span-12 md:col-span-4 xl:col-span-3 bg-white rounded-xl border border-slate-200 flex flex-col min-h-0 overflow-hidden shadow-2xs">
       <div class="p-2 border-b border-slate-100 flex flex-col gap-1.5 bg-slate-50/70 flex-shrink-0">
         <div class="flex items-center justify-between">
@@ -219,11 +216,11 @@
         </div>
       </div>
 
-      <!-- 종목 리스트 (내부 스크롤만 발생) -->
+      <!-- 종목 리스트 -->
       <div id="stockListContainer" class="flex-1 min-h-0 overflow-y-auto divide-y divide-slate-100"></div>
     </section>
 
-    <!-- ◆ 중앙 컬럼 (6열): 상세 기업 정보 및 순수 실시간 라인 시세 그래프 -->
+    <!-- 중앙 컬럼: 기업 상세 및 실시간 캔버스 시세 차트 -->
     <section class="col-span-12 md:col-span-5 xl:col-span-6 flex flex-col min-h-0 gap-2 overflow-hidden">
       
       <!-- 상단 기업 요약 및 가격제한폭 게이지 -->
@@ -258,7 +255,7 @@
           </div>
         </div>
 
-        <!-- 기업 탐구 요약 설명 -->
+        <!-- 기업 설명 -->
         <p id="detailStockDesc" class="text-[11px] font-medium text-slate-600 bg-slate-50 p-2 rounded-lg leading-relaxed border border-slate-100">
           갤럭시 스마트폰, DRAM, 초고성능 HBM 메모리를 만드는 한국 시가총액 1위 대표 기업입니다.
         </p>
@@ -293,7 +290,6 @@
           </div>
         </div>
 
-        <!-- 캔버스 그래프 렌더링 영역 -->
         <div class="flex-1 min-h-0 relative mt-1.5 flex flex-col">
           <canvas id="stockCanvas" class="w-full h-full block rounded-lg bg-slate-50/70 border border-slate-100"></canvas>
           <div id="canvasTooltip" class="hidden absolute pointer-events-none bg-slate-900/90 text-white text-[10px] font-mono px-2 py-1 rounded shadow-lg z-10 whitespace-nowrap"></div>
@@ -301,7 +297,7 @@
       </div>
     </section>
 
-    <!-- ▶ 우측 컬럼 (3열): 초간편 주문 패드 & 내 보유 주식 -->
+    <!-- 우측 컬럼: 초간편 주문 패드 & 내 보유 주식 현황 -->
     <section class="col-span-12 md:col-span-3 xl:col-span-3 flex flex-col min-h-0 gap-2 overflow-hidden">
       
       <!-- 초간편 주문 패드 -->
@@ -328,7 +324,7 @@
         <div class="space-y-1">
           <div class="flex justify-between text-[10px] font-bold text-slate-500">
             <span>주문 수량(주)</span>
-            <span id="orderMaxQtyHint" class="text-indigo-600">최대 매수: 16주</span>
+            <span id="orderMaxQtyHint" class="text-indigo-600">최대 매수: 0주</span>
           </div>
           <div class="items-center gap-1 flex">
             <button onclick="changeOrderQty(-10)" class="w-7 h-7 rounded bg-slate-100 hover:bg-slate-200 text-slate-700 font-black text-[11px]">-10</button>
@@ -364,7 +360,7 @@
         </div>
       </div>
 
-      <!-- 내 보유 주식 포트폴리오 (내부 스크롤만 발생) -->
+      <!-- 내 보유 주식 포트폴리오 -->
       <div class="flex-1 min-h-0 bg-white rounded-xl border border-slate-200 p-2.5 flex flex-col shadow-2xs overflow-hidden">
         <div class="flex items-center justify-between pb-1.5 border-b border-slate-100 flex-shrink-0">
           <span class="text-xs font-black text-slate-800 flex items-center gap-1">
@@ -384,62 +380,7 @@
     </section>
   </main>
 
-  <!-- 3. 네트워크 접속 환경 설정 모달 -->
-  <div id="networkModal" class="hidden fixed inset-0 bg-slate-900/60 backdrop-blur-xs z-50 flex items-center justify-center p-4">
-    <div class="bg-white rounded-2xl border border-slate-200 shadow-2xl max-w-md w-full p-5 text-left">
-      <div class="flex items-center justify-between pb-3 border-b border-slate-100 mb-3">
-        <div class="flex items-center gap-2">
-          <div class="w-7 h-7 rounded-lg bg-indigo-600 text-white flex items-center justify-center text-xs">
-            <i class="fa-solid fa-network-wired"></i>
-          </div>
-          <div>
-            <div class="flex items-center gap-1.5">
-              <h3 class="text-sm font-black text-slate-900">시뮬레이터 엔진 환경 설정</h3>
-              <span class="px-1.5 py-0.2 rounded text-[9px] font-black bg-indigo-50 text-indigo-700 border border-indigo-200">교사 전용 권한</span>
-            </div>
-            <p class="text-[10px] text-slate-400">학급 전체 학생의 거래 엔진 및 네트워크 동작 방식을 제어합니다.</p>
-          </div>
-        </div>
-        <button onclick="toggleNetworkConfigModal(false)" class="text-slate-400 hover:text-slate-600 text-sm">
-          <i class="fa-solid fa-xmark"></i>
-        </button>
-      </div>
-
-      <div class="space-y-3 text-xs">
-        <div class="p-2.5 rounded-xl border border-indigo-200 bg-indigo-50/50">
-          <label class="flex items-start gap-2 cursor-pointer">
-            <input type="radio" name="networkModeRadio" id="modeOfflineSim" checked onchange="setEngineMode('sim')" class="mt-0.5 text-indigo-600">
-            <div>
-              <div class="font-black text-indigo-950">교실 독립형 KRX 정밀 시뮬레이터 (권장)</div>
-              <div class="text-[11px] text-slate-600 mt-0.5">제한된 학교 네트워크나 인터넷 차단 환경에서도 한국거래소 실제 호가 단위, 가격제한폭(±30%), 체결 규칙을 100% 동일하게 에뮬레이션합니다.</div>
-            </div>
-          </label>
-        </div>
-
-        <div class="p-2.5 rounded-xl border border-slate-200 bg-slate-50">
-          <label class="flex items-start gap-2 cursor-pointer">
-            <input type="radio" name="networkModeRadio" id="modeOnlineLive" onchange="setEngineMode('live')" class="mt-0.5 text-indigo-600">
-            <div>
-              <div class="font-black text-slate-900">실시간 외부 금융 API 연동 모드</div>
-              <div class="text-[11px] text-slate-500 mt-0.5">외부 금융망을 통해 실제 한국거래소 시세를 동기화합니다. (학교망 차단 시 시뮬레이터로 자동 보호)</div>
-            </div>
-          </label>
-          <div class="mt-2 pt-2 border-t border-slate-200 flex items-center justify-between">
-            <span class="text-[10px] text-slate-500">주요 10대 기업 실제 현재가 일괄 갱신</span>
-            <button onclick="syncTopStocksLive()" class="px-2 py-1 bg-emerald-600 hover:bg-emerald-700 text-white rounded text-[10px] font-black transition flex items-center gap-1">
-              <i class="fa-solid fa-cloud-arrow-down"></i> 실제 시세 동기화
-            </button>
-          </div>
-        </div>
-
-        <div class="pt-2 text-right">
-          <button onclick="toggleNetworkConfigModal(false)" class="px-3 py-1.5 bg-indigo-600 hover:bg-indigo-700 text-white rounded-lg font-black text-xs">확인</button>
-        </div>
-      </div>
-    </div>
-  </div>
-
-  <!-- 4. 학생 로그인 모달 -->
+  <!-- 3. 학생 계좌 개설(로그인) 모달 -->
   <div id="loginModal" class="fixed inset-0 bg-slate-900/60 backdrop-blur-xs z-50 flex items-center justify-center p-4">
     <div class="bg-white rounded-2xl border border-slate-200 shadow-2xl max-w-sm w-full p-5 text-center">
       <div class="w-12 h-12 rounded-xl bg-indigo-600 text-white mx-auto flex items-center justify-center text-xl font-black shadow-md mb-3">
@@ -486,7 +427,8 @@
       </form>
     </div>
   </div>
-  <!-- 5. 교사용 실시간 관제 센터 (단축키 Ctrl + 1) -->
+
+  <!-- 4. 교사용 실시간 관제 센터 (Ctrl+1) -->
   <div id="teacherModal" class="hidden fixed inset-0 bg-slate-900/70 backdrop-blur-xs z-50 flex items-center justify-center p-3">
     <div class="bg-white rounded-2xl border border-slate-200 shadow-2xl max-w-4xl w-full p-4 flex flex-col max-h-[92vh] overflow-hidden">
       <!-- 교사용 헤더 -->
@@ -499,9 +441,9 @@
             <div class="flex items-center gap-1.5">
               <h3 class="text-sm font-black text-slate-900">교사용 실시간 관제 센터</h3>
               <span class="px-1.5 py-0.2 rounded text-[9px] font-black bg-rose-50 text-rose-700 border border-rose-200">단축키 Ctrl+1</span>
-              <span class="px-1.5 py-0.2 rounded text-[9px] font-black bg-emerald-50 text-emerald-700 border border-emerald-200">30인 실시간 클라우드 연동</span>
+              <span class="px-1.5 py-0.2 rounded text-[9px] font-black bg-emerald-50 text-emerald-700 border border-emerald-200">실시간 연동</span>
             </div>
-            <p class="text-[10px] text-slate-500">장 운영 제어, 사용자 강퇴(퇴장) 조치, 8대 상위 업종 시나리오 주입</p>
+            <p class="text-[10px] text-slate-500">장 운영 제어, 학생 관리 및 강퇴 조치, 상위 업종 시나리오 주입</p>
           </div>
         </div>
         <button onclick="toggleTeacherModal(false)" class="w-7 h-7 rounded-lg bg-slate-100 hover:bg-slate-200 text-slate-600 flex items-center justify-center">
@@ -523,18 +465,15 @@
             <button onclick="teacherGiveSubsidy(500000)" class="px-2.5 py-1 bg-indigo-600 hover:bg-indigo-700 text-white rounded-lg text-xs font-black shadow-xs transition flex items-center gap-1">
               <i class="fa-solid fa-hand-holding-dollar"></i> 전원 지원금 (+50만)
             </button>
-            <button onclick="toggleNetworkConfigModal(true)" title="교실 시뮬레이터 엔진 환경 제어" class="px-2.5 py-1 bg-white hover:bg-slate-100 border border-slate-300 text-slate-700 rounded-lg text-xs font-black shadow-2xs transition flex items-center gap-1">
-              <i class="fa-solid fa-sliders text-indigo-600 text-xs"></i> <span>엔진 설정</span>
-            </button>
           </div>
           <div class="text-xs font-bold text-slate-500 flex items-center gap-2">
-            <span>참여 학생: <strong id="teacherTotalStudentCount" class="font-mono font-black text-indigo-700">6명</strong></span>
+            <span>참여 학생: <strong id="teacherTotalStudentCount" class="font-mono font-black text-indigo-700">0명</strong></span>
             <span class="text-slate-300">|</span>
-            <span class="text-rose-600 font-bold">강퇴(차단): <strong id="teacherBannedCount" class="font-mono font-black text-rose-600">0명</strong></span>
+            <span class="text-rose-600 font-bold">강퇴: <strong id="teacherBannedCount" class="font-mono font-black text-rose-600">0명</strong></span>
           </div>
         </div>
 
-        <!-- 교사용 장 시간 설정 -->
+        <!-- 장 시간 설정 -->
         <div class="flex flex-wrap items-center justify-between gap-2 pt-2 border-t border-slate-200/80">
           <div class="flex items-center gap-2 flex-wrap">
             <span class="text-xs font-black text-indigo-950 flex items-center gap-1">
@@ -557,7 +496,7 @@
         </div>
       </div>
 
-      <!-- 교사용 이벤트 컨트롤러 모드 전환 탭 -->
+      <!-- 교사용 모드 전환 탭 -->
       <div class="flex items-center gap-1 bg-slate-100 p-0.5 rounded-xl border border-slate-200 text-xs font-black flex-shrink-0 mb-2">
         <button id="teacherTabBtn_ranking" onclick="switchTeacherTab('ranking')" class="flex-1 py-1 rounded-lg bg-white text-indigo-700 shadow-2xs transition flex items-center justify-center gap-1.5">
           <i class="fa-solid fa-users-gear text-indigo-600"></i>
@@ -573,23 +512,23 @@
         </button>
       </div>
 
-      <!-- TAB 1: 학생 관리 및 실시간 랭킹 (사용자 강퇴 기능 포함) -->
+      <!-- TAB 1: 학생 관리 및 실시간 랭킹 (더미 학생 없이 실제 접속자만) -->
       <div id="teacherRankingPanel" class="flex-1 min-h-0 border border-slate-200 rounded-xl overflow-hidden flex flex-col bg-white">
         <div class="px-3 py-1.5 bg-slate-50 border-b border-slate-200 flex items-center justify-between flex-shrink-0">
           <div class="flex items-center gap-2">
             <span class="text-[11px] font-black text-slate-800 flex items-center gap-1">
               <i class="fa-solid fa-award text-amber-500"></i> 실시간 학급 학생 명단 및 투자 현황
             </span>
-            <span class="text-[10px] text-slate-500">(장난 주문이나 부정 행위 시 강퇴 조치 가능)</span>
+            <span class="text-[10px] text-slate-500">(부정 행위나 장난 주문 시 강퇴 조치 가능)</span>
           </div>
 
           <div class="flex items-center gap-1">
-            <button onclick="toggleBannedView(false)" id="tabActiveStudents" class="px-2 py-0.5 rounded text-[10px] font-black bg-indigo-600 text-white transition">참여 학생 (<span id="countActiveTab">6</span>)</button>
+            <button onclick="toggleBannedView(false)" id="tabActiveStudents" class="px-2 py-0.5 rounded text-[10px] font-black bg-indigo-600 text-white transition">참여 학생 (<span id="countActiveTab">0</span>)</button>
             <button onclick="toggleBannedView(true)" id="tabBannedStudents" class="px-2 py-0.5 rounded text-[10px] font-bold bg-slate-100 text-slate-600 hover:bg-slate-200 transition">강퇴 목록 (<span id="countBannedTab">0</span>)</button>
           </div>
         </div>
 
-        <!-- 1-1) 정상 참여 학생 랭킹 및 강퇴 버튼 테이블 -->
+        <!-- 1-1) 정상 참여 학생 랭킹 테이블 -->
         <div id="activeStudentsContainer" class="flex-1 min-h-0 overflow-y-auto">
           <table class="w-full text-left text-xs border-collapse">
             <thead class="bg-slate-50 text-[10px] font-bold text-slate-500 sticky top-0 border-b border-slate-200 z-10">
@@ -597,7 +536,7 @@
                 <th class="py-1 px-2.5">순위</th>
                 <th class="py-1 px-2.5">학번</th>
                 <th class="py-1 px-2.5">이름</th>
-                <th class="py-1 px-2.5">사용자 ID (클라우드 식별자)</th>
+                <th class="py-1 px-2.5">사용자 식별자</th>
                 <th class="py-1 px-2.5 text-right">총 평가자산</th>
                 <th class="py-1 px-2.5 text-right">수익률</th>
                 <th class="py-1 px-2.5 text-center">보유/거래</th>
@@ -608,7 +547,7 @@
           </table>
         </div>
 
-        <!-- 1-2) 강퇴된 학생 목록 및 재승인(복구) 관리 테이블 -->
+        <!-- 1-2) 강퇴된 학생 목록 테이블 -->
         <div id="bannedStudentsContainer" class="hidden flex-1 min-h-0 overflow-y-auto">
           <table class="w-full text-left text-xs border-collapse">
             <thead class="bg-rose-50 text-[10px] font-bold text-rose-700 sticky top-0 border-b border-rose-200 z-10">
@@ -629,7 +568,7 @@
         </div>
       </div>
 
-      <!-- TAB 2: 상위 업종(산업군)별 호재 / 악재 패널 -->
+      <!-- TAB 2: 상위 업종별 호재 / 악재 패널 -->
       <div id="teacherStockCatalystPanel" class="hidden flex flex-col gap-2 flex-1 min-h-0 overflow-y-auto p-2.5 rounded-xl bg-slate-50 border border-slate-200">
         <div class="space-y-1 pb-1 border-b border-slate-200">
           <div class="flex items-center justify-between">
@@ -670,7 +609,7 @@
         </div>
       </div>
 
-      <!-- TAB 3: 시장 전체 거시경제 8대 시나리오 패널 -->
+      <!-- TAB 3: 거시경제 8대 시나리오 패널 -->
       <div id="teacherMarketShockPanel" class="hidden space-y-2 flex-1 min-h-0 overflow-y-auto p-2.5 rounded-xl bg-slate-50 border border-slate-200">
         <div class="text-[11px] font-black text-rose-700 flex items-center gap-1">
           <i class="fa-solid fa-arrow-trend-up"></i> 시장 상승(호재) 시나리오 4종
@@ -711,9 +650,9 @@
     </div>
   </div>
 
-  <!-- 5.5. 사용자 강퇴 확인 모달 (Custom Confirm Modal - alert/confirm 대체) -->
+  <!-- 5.5. 사용자 강퇴 확인 모달 (Custom Modal) -->
   <div id="kickConfirmModal" class="hidden fixed inset-0 bg-slate-900/70 backdrop-blur-xs z-50 flex items-center justify-center p-4">
-    <div class="bg-white rounded-2xl border border-rose-200 shadow-2xl max-w-sm w-full p-5 text-left animate-in fade-in zoom-in-95 duration-150">
+    <div class="bg-white rounded-2xl border border-rose-200 shadow-2xl max-w-sm w-full p-5 text-left">
       <div class="flex items-center gap-2.5 pb-2.5 border-b border-slate-100">
         <div class="w-9 h-9 rounded-xl bg-rose-100 text-rose-600 flex items-center justify-center text-base font-black">
           <i class="fa-solid fa-user-slash"></i>
@@ -727,7 +666,7 @@
       <div class="my-3 space-y-2 text-xs">
         <div class="p-2.5 rounded-xl bg-rose-50/70 border border-rose-100">
           <div class="text-[10px] font-bold text-rose-500">강퇴 대상 학생:</div>
-          <div id="kickTargetStudentInfo" class="text-sm font-black text-rose-900 mt-0.5">3학년 1반 12번 이서아</div>
+          <div id="kickTargetStudentInfo" class="text-sm font-black text-rose-900 mt-0.5">-</div>
         </div>
 
         <div>
@@ -741,7 +680,7 @@
           </select>
         </div>
 
-        <p class="text-[10px] text-slate-400">※ 강퇴된 학생은 계좌가 동결되며 로그인 화면으로 즉시 튕겨져 나갑니다. 필요 시 [강퇴 목록]에서 언제든 다시 해제할 수 있습니다.</p>
+        <p class="text-[10px] text-slate-400">※ 강퇴된 학생은 계좌가 동결되며 로그인 화면으로 즉시 튕겨져 나갑니다. [강퇴 목록]에서 복구 가능합니다.</p>
       </div>
 
       <div class="flex items-center justify-end gap-1.5 pt-2 border-t border-slate-100">
@@ -754,7 +693,7 @@
     </div>
   </div>
 
-  <!-- 5.6. 학생이 강퇴당했을 때 나타나는 안내 화면 모달 -->
+  <!-- 5.6. 학생이 강퇴당했을 때의 알림 모달 -->
   <div id="kickedNoticeModal" class="hidden fixed inset-0 bg-slate-950/85 backdrop-blur-md z-50 flex items-center justify-center p-4">
     <div class="bg-white rounded-2xl border-2 border-rose-500 shadow-2xl max-w-sm w-full p-6 text-center animate-in zoom-in-95 duration-200">
       <div class="w-16 h-16 rounded-2xl bg-rose-100 text-rose-600 mx-auto flex items-center justify-center text-3xl font-black mb-3 border border-rose-200 animate-bounce">
@@ -766,11 +705,11 @@
       <div class="my-4 p-3 rounded-xl bg-slate-50 border border-slate-200 text-left text-xs space-y-1">
         <div class="flex justify-between text-slate-500 text-[11px]">
           <span>퇴장 조치 시각:</span>
-          <span id="kickedTimeText" class="font-mono font-bold text-slate-700">10:45:21</span>
+          <span id="kickedTimeText" class="font-mono font-bold text-slate-700">-</span>
         </div>
         <div class="flex flex-col gap-0.5 pt-1 border-t border-slate-200">
           <span class="text-slate-500 text-[10px]">지정된 강퇴 사유:</span>
-          <span id="kickedReasonText" class="font-black text-slate-900 bg-rose-50 p-1.5 rounded border border-rose-100 text-[11px]">고의적 장난 주문</span>
+          <span id="kickedReasonText" class="font-black text-slate-900 bg-rose-50 p-1.5 rounded border border-rose-100 text-[11px]">-</span>
         </div>
       </div>
 
@@ -785,7 +724,7 @@
     </div>
   </div>
 
-  <!-- 6. 전체 마켓 뉴스 & 종목 선택 길라잡이 모달 -->
+  <!-- 6. 전체 마켓 뉴스 모달 -->
   <div id="allNewsModal" class="hidden fixed inset-0 bg-slate-900/65 backdrop-blur-xs z-50 flex items-center justify-center p-3">
     <div class="bg-white rounded-2xl border border-slate-200 shadow-2xl max-w-2xl w-full p-4 flex flex-col max-h-[85vh] overflow-hidden text-left">
       <div class="flex items-center justify-between pb-2.5 border-b border-slate-100 flex-shrink-0">
@@ -803,7 +742,7 @@
         </button>
       </div>
 
-      <!-- 뉴스 업종 필터 탭 -->
+      <!-- 뉴스 필터 탭 -->
       <div class="py-2 flex items-center gap-1 overflow-x-auto no-scrollbar border-b border-slate-100 flex-shrink-0">
         <button onclick="filterNewsCategory('ALL')" id="newsFilter_ALL" class="news-filter-chip px-2 py-0.5 rounded text-[10px] font-black bg-indigo-600 text-white transition">전체 뉴스</button>
         <button onclick="filterNewsCategory('식품/외식')" id="newsFilter_식품/외식" class="news-filter-chip px-2 py-0.5 rounded text-[10px] font-bold bg-slate-100 text-slate-600 hover:bg-slate-200 transition">식품/외식</button>
@@ -816,7 +755,6 @@
         <button onclick="filterNewsCategory('금융/지주')" id="newsFilter_금융/지주" class="news-filter-chip px-2 py-0.5 rounded text-[10px] font-bold bg-slate-100 text-slate-600 hover:bg-slate-200 transition">금융/거시</button>
       </div>
 
-      <!-- 뉴스 리스트 컨테이너 -->
       <div id="allNewsModalList" class="flex-1 min-h-0 overflow-y-auto divide-y divide-slate-100 py-1 space-y-2"></div>
     </div>
   </div>
@@ -826,192 +764,7 @@
 
   <script>
     /* ==========================================================
-       1. Firebase Cloud Firestore 실시간 다자간 통신 엔진
-       ========================================================== */
-    const appId = typeof __app_id !== 'undefined' ? __app_id : 'krx-stock-class-30';
-    let firebaseApp = null;
-    let auth = null;
-    let db = null;
-    let currentUserUid = null;
-    let isCloudConnected = false;
-    let unsubscribeStudents = null;
-    let unsubscribeMarketState = null;
-
-    // Firebase 11.6.1 CDN 모듈 동적 로더
-    async function initFirebaseCloudEngine() {
-      if (typeof __firebase_config === 'undefined' || !__firebase_config) {
-        console.log("Firebase 구성이 설정되지 않아 교실 독립 에뮬레이터 모드로 자립 동작합니다.");
-        return;
-      }
-
-      try {
-        const { initializeApp } = await import("https://www.gstatic.com/firebasejs/11.6.1/firebase-app.js");
-        const { getAuth, signInAnonymously, signInWithCustomToken, onAuthStateChanged } = await import("https://www.gstatic.com/firebasejs/11.6.1/firebase-auth.js");
-        const { getFirestore, doc, getDoc, setDoc, updateDoc, onSnapshot, collection } = await import("https://www.gstatic.com/firebasejs/11.6.1/firebase-firestore.js");
-
-        const firebaseConfig = JSON.parse(__firebase_config);
-        firebaseApp = initializeApp(firebaseConfig);
-        auth = getAuth(firebaseApp);
-        db = getFirestore(firebaseApp);
-
-        // RULE 3: 선행 인증 처리
-        if (typeof __initial_auth_token !== 'undefined' && __initial_auth_token) {
-          await signInWithCustomToken(auth, __initial_auth_token);
-        } else {
-          await signInAnonymously(auth);
-        }
-
-        currentUserUid = auth.currentUser?.uid || crypto.randomUUID();
-        isCloudConnected = true;
-
-        // 상단 네트워크 인디케이터 클라우드 활성화 표시
-        const netDot = document.getElementById('netStatusDot');
-        const netText = document.getElementById('netStatusText');
-        const badge = document.getElementById('firebaseLiveBadge');
-        if (netDot) netDot.className = 'w-2 h-2 rounded-full bg-emerald-500 animate-pulse';
-        if (netText) netText.textContent = `클라우드 실시간 연동 (30인 지원)`;
-        if (badge) badge.classList.remove('hidden');
-
-        // 클라우드 실시간 리스너 시작
-        setupCloudMarketListener({ doc, onSnapshot, setDoc, updateDoc });
-        setupCloudStudentsListener({ collection, onSnapshot, doc, setDoc });
-
-        showToast('클라우드 연결 완료 ☁️', '30인 실시간 교실 네트워크에 접속되었습니다.', 'success');
-      } catch (err) {
-        console.warn("Firebase 연결 실패, 오프라인 시뮬레이터로 자동 보호:", err);
-      }
-    }
-    // RULE 1: /artifacts/{appId}/public/data/market_state/config
-    function setupCloudMarketListener(fb) {
-      if (!db || !currentUserUid) return;
-      const marketDocRef = fb.doc(db, 'artifacts', appId, 'public', 'data', 'market_state', 'config');
-
-      unsubscribeMarketState = fb.onSnapshot(marketDocRef, (snap) => {
-        if (!snap.exists()) return;
-        const data = snap.data();
-
-        // 1) 교사가 설정한 장 상태 동기화 (개장, 일시정지, 마감)
-        if (data.marketState && data.marketState !== marketState) {
-          setMarketState(data.marketState, false); // 원격 반영 시 재귀 전송 방지
-        }
-        if (typeof data.marketSeconds === 'number') {
-          marketSeconds = data.marketSeconds;
-          updateTimerDisplay();
-        }
-        if (typeof data.marketConfigMinutes === 'number' && data.marketConfigMinutes !== marketConfigMinutes) {
-          marketConfigMinutes = data.marketConfigMinutes;
-          const input = document.getElementById('teacherMarketMinutesInput');
-          if (input) input.value = marketConfigMinutes;
-        }
-
-        // 2) 교사가 전원 지급한 지원금 처리
-        if (data.lastSubsidyTimestamp && data.lastSubsidyTimestamp !== window.lastAppliedSubsidyTime) {
-          window.lastAppliedSubsidyTime = data.lastSubsidyTimestamp;
-          if (data.subsidyAmount && currentStudent.name) {
-            currentStudent.cash += data.subsidyAmount;
-            calculateAssets();
-            calculateOrderTotal();
-            pushStudentDataToCloud();
-            SoundFX.playTone(587.33, 0.2, 'sine', 0.25);
-            showToast('지원금 입금 🎁', `선생님께서 전원 지원금 +${Number(data.subsidyAmount).toLocaleString()}원을 지급하셨습니다!`, 'success');
-          }
-        }
-
-        // 3) 교사가 발동한 경제 쇼크 동기화
-        if (data.lastShock && data.lastShock.timestamp !== window.lastAppliedShockTime) {
-          window.lastAppliedShockTime = data.lastShock.timestamp;
-          applyMarketShockEffect(data.lastShock.type, false);
-        }
-
-        // 4) 강퇴(차단) 명단 실시간 동기화
-        if (Array.isArray(data.bannedStudents)) {
-          bannedStudents = data.bannedStudents;
-          sessionStorage.setItem('krx_banned_students', JSON.stringify(bannedStudents));
-          updateTeacherKickBadge();
-
-          // 현재 본인이 강퇴당했는지 실시간 체크
-          const isKicked = bannedStudents.find(b => b.id === currentStudent.id || b.uid === currentUserUid);
-          if (isKicked) {
-            triggerSelfKickedScreen(isKicked.reason, isKicked.time);
-          }
-        }
-      }, (err) => {
-        console.error("Market state listener error:", err);
-      });
-    }
-
-    // RULE 1 & RULE 2: /artifacts/{appId}/public/data/classroom_students
-    function setupCloudStudentsListener(fb) {
-      if (!db || !currentUserUid) return;
-      const studentsColRef = fb.collection(db, 'artifacts', appId, 'public', 'data', 'classroom_students');
-
-      unsubscribeStudents = fb.onSnapshot(studentsColRef, (snapshot) => {
-        const studentDocs = [];
-        snapshot.forEach(docSnap => {
-          studentDocs.push(docSnap.data());
-        });
-
-        // RULE 2: 클라이언트 메모리에서 정렬
-        studentDocs.sort((a, b) => (b.totalAsset || 0) - (a.totalAsset || 0));
-
-        // 학급 학생 풀 교체 (본인 식별 유지)
-        classroomStudents = studentDocs.map(item => ({
-          ...item,
-          isSelf: item.uid === currentUserUid || item.id === currentStudent.id
-        }));
-
-        // 상단 실시간 접속자 수 갱신
-        const badgeCount = document.getElementById('headerLiveStudentCount');
-        const teacherCount = document.getElementById('teacherTotalStudentCount');
-        if (badgeCount) badgeCount.textContent = classroomStudents.length;
-        if (teacherCount) teacherCount.textContent = `${classroomStudents.length}명`;
-
-        renderTeacherRanking();
-      }, (err) => {
-        console.error("Students listener error:", err);
-      });
-    }
-    // 학생 본인의 최신 자산/포트폴리오 정보를 Firestore에 실시간 업로드
-    async function pushStudentDataToCloud() {
-      if (!isCloudConnected || !db || !currentStudent.name) return;
-      try {
-        const { doc, setDoc } = await import("https://www.gstatic.com/firebasejs/11.6.1/firebase-firestore.js");
-        const docRef = doc(db, 'artifacts', appId, 'public', 'data', 'classroom_students', currentStudent.id);
-        
-        await setDoc(docRef, {
-          id: currentStudent.id,
-          uid: currentUserUid,
-          classNum: currentStudent.classNum,
-          studentNum: currentStudent.studentNum,
-          name: currentStudent.name,
-          cash: currentStudent.cash,
-          totalAsset: currentStudent.totalAsset,
-          profitRate: currentStudent.profitRate,
-          portfolio: currentStudent.portfolio,
-          tradeCount: currentStudent.tradeCount || 0,
-          updatedAt: Date.now()
-        }, { merge: true });
-      } catch (err) {
-        console.error("Failed to push student data to cloud:", err);
-      }
-    }
-
-    // 교사의 시장 상태 변경을 Firestore에 브로드캐스트
-    async function broadcastMarketStateToCloud(updates) {
-      if (!isCloudConnected || !db) return;
-      try {
-        const { doc, setDoc } = await import("https://www.gstatic.com/firebasejs/11.6.1/firebase-firestore.js");
-        const marketDocRef = doc(db, 'artifacts', appId, 'public', 'data', 'market_state', 'config');
-        await setDoc(marketDocRef, {
-          ...updates,
-          updatedAt: Date.now()
-        }, { merge: true });
-      } catch (err) {
-        console.error("Failed to broadcast market state:", err);
-      }
-    }
-    /* ==========================================================
-       1. 순수 Web Audio API 사운드 합성기 (오프라인 100% 자립)
+       1. 순수 Web Audio API 사운드 합성기
        ========================================================== */
     const SoundFX = {
       ctx: null,
@@ -1038,9 +791,7 @@
           gain.connect(this.ctx.destination);
           osc.start();
           osc.stop(this.ctx.currentTime + duration);
-        } catch (e) {
-          // 사운드 비활성 환경 예외 처리
-        }
+        } catch (e) {}
       },
       playTrade() {
         this.playTone(659.25, 0.08, 'sine', 0.2);
@@ -1062,7 +813,7 @@
     };
 
     /* ==========================================================
-       2. 한국거래소(KRX) 공식 호가 단위(Tick Size) 및 업종 분류
+       2. KRX 공식 호가 단위 (Tick Size) 및 정렬 함수
        ========================================================== */
     function getKrxTickSize(price) {
       if (price < 2000) return 1;
@@ -1289,12 +1040,10 @@
       { id: '005940', name: 'NH투자증권', cat: '금융/지주', icon: '🌾', base: 14500, desc: "나무(NAMUH) 모바일 증권 앱과 농협 금융 네트워크를 기반으로 한 대형 증권사입니다." }
     ];
 
-    // 한국거래소 상·하한가(±30%) 및 호가 단위 정규화 처리
+    // 호가 단위 정렬 및 ±30% 가격제한폭 계산
     const ALL_STOCKS = RAW_STOCKS.map(item => {
-      const rawHigh = item.base * 1.30;
-      const rawLow = item.base * 0.70;
-      const limitHigh = alignToKrxTick(rawHigh);
-      const limitLow = alignToKrxTick(rawLow);
+      const limitHigh = alignToKrxTick(item.base * 1.30);
+      const limitLow = alignToKrxTick(item.base * 0.70);
 
       const history = [];
       let cur = item.base;
@@ -1318,7 +1067,7 @@
       };
     });
 
-    const SEED_MONEY = 10000000; // 1,000만 원 (일천만 원 고정)
+    const SEED_MONEY = 10000000; // 1,000만 원 기본 시드머니
 
     let currentStudent = {
       id: '',
@@ -1333,71 +1082,10 @@
       isSelf: true
     };
 
-    // 실감나는 학급 모의투자 운영을 위한 학급 학생 풀 (교사가 강퇴/관리 가능)
-    let classroomStudents = [
-      {
-        id: 'std_3_1_12_이서아',
-        classNum: 1,
-        studentNum: 12,
-        name: '이서아',
-        cash: 2400000,
-        totalAsset: 11420000,
-        profitRate: 14.20,
-        portfolio: { '003230': { qty: 7, avgPrice: 1180000 } },
-        tradeCount: 8,
-        isSelf: false
-      },
-      {
-        id: 'std_3_1_05_박도윤',
-        classNum: 1,
-        studentNum: 5,
-        name: '박도윤',
-        cash: 1800000,
-        totalAsset: 10860000,
-        profitRate: 8.60,
-        portfolio: { '005930': { qty: 25, avgPrice: 275000 } },
-        tradeCount: 6,
-        isSelf: false
-      },
-      {
-        id: 'std_3_1_18_최지우',
-        classNum: 1,
-        studentNum: 18,
-        name: '최지우',
-        cash: 3500000,
-        totalAsset: 10180000,
-        profitRate: 1.80,
-        portfolio: { '005380': { qty: 18, avgPrice: 348000 } },
-        tradeCount: 4,
-        isSelf: false
-      },
-      {
-        id: 'std_3_1_21_정예준',
-        classNum: 1,
-        studentNum: 21,
-        name: '정예준',
-        cash: 520000,
-        totalAsset: 9550000,
-        profitRate: -4.50,
-        portfolio: { '373220': { qty: 22, avgPrice: 382000 } },
-        tradeCount: 11,
-        isSelf: false
-      },
-      {
-        id: 'std_3_1_09_한소희',
-        classNum: 1,
-        studentNum: 9,
-        name: '한소희',
-        cash: 4200000,
-        totalAsset: 9280000,
-        profitRate: -7.20,
-        portfolio: { '259960': { qty: 24, avgPrice: 215000 } },
-        tradeCount: 7,
-        isSelf: false
-      }
-    ];
+    // 가상 더미 학생 없이 실제 접속한 학생만 담는 동적 배열 (0명에서 시작)
+    let classroomStudents = [];
 
-    // 강퇴된 학생 블랙리스트 저장소
+    // 강퇴된 학생 목록
     let bannedStudents = [];
     let pendingKickStudentId = null;
 
@@ -1412,6 +1100,165 @@
     let marketTimerInterval = null;
     let priceTickTimer = null;
 
+    /* ==========================================================
+       3. Firebase Cloud Firestore 실시간 연동 (선택적)
+       ========================================================== */
+    const appId = typeof __app_id !== 'undefined' ? __app_id : 'krx-stock-class-real';
+    let firebaseApp = null;
+    let auth = null;
+    let db = null;
+    let currentUserUid = null;
+    let isCloudConnected = false;
+
+    async function initFirebaseCloudEngine() {
+      if (typeof __firebase_config === 'undefined' || !__firebase_config) {
+        return;
+      }
+
+      try {
+        const { initializeApp } = await import("https://www.gstatic.com/firebasejs/11.6.1/firebase-app.js");
+        const { getAuth, signInAnonymously, signInWithCustomToken } = await import("https://www.gstatic.com/firebasejs/11.6.1/firebase-auth.js");
+        const { getFirestore, doc, setDoc, onSnapshot, collection } = await import("https://www.gstatic.com/firebasejs/11.6.1/firebase-firestore.js");
+
+        const firebaseConfig = JSON.parse(__firebase_config);
+        firebaseApp = initializeApp(firebaseConfig);
+        auth = getAuth(firebaseApp);
+        db = getFirestore(firebaseApp);
+
+        // RULE 3: 선행 인증
+        if (typeof __initial_auth_token !== 'undefined' && __initial_auth_token) {
+          await signInWithCustomToken(auth, __initial_auth_token);
+        } else {
+          await signInAnonymously(auth);
+        }
+
+        currentUserUid = auth.currentUser?.uid || crypto.randomUUID();
+        isCloudConnected = true;
+
+        const netDot = document.getElementById('netStatusDot');
+        const netText = document.getElementById('netStatusText');
+        if (netDot) netDot.className = 'w-2 h-2 rounded-full bg-emerald-500 animate-pulse';
+        if (netText) netText.textContent = `클라우드 실시간 연동 모드`;
+
+        setupCloudMarketListener({ doc, onSnapshot, setDoc });
+        setupCloudStudentsListener({ collection, onSnapshot });
+      } catch (err) {
+        console.warn("오프라인 독립 시뮬레이터로 안전 동작합니다:", err);
+      }
+    }
+
+    function setupCloudMarketListener(fb) {
+      if (!db || !currentUserUid) return;
+      const marketDocRef = fb.doc(db, 'artifacts', appId, 'public', 'data', 'market_state', 'config');
+
+      fb.onSnapshot(marketDocRef, (snap) => {
+        if (!snap.exists()) return;
+        const data = snap.data();
+
+        if (data.marketState && data.marketState !== marketState) {
+          setMarketState(data.marketState, false);
+        }
+        if (typeof data.marketSeconds === 'number') {
+          marketSeconds = data.marketSeconds;
+          updateTimerDisplay();
+        }
+        if (typeof data.marketConfigMinutes === 'number' && data.marketConfigMinutes !== marketConfigMinutes) {
+          marketConfigMinutes = data.marketConfigMinutes;
+          const input = document.getElementById('teacherMarketMinutesInput');
+          if (input) input.value = marketConfigMinutes;
+        }
+        if (data.lastSubsidyTimestamp && data.lastSubsidyTimestamp !== window.lastAppliedSubsidyTime) {
+          window.lastAppliedSubsidyTime = data.lastSubsidyTimestamp;
+          if (data.subsidyAmount && currentStudent.name) {
+            currentStudent.cash += data.subsidyAmount;
+            calculateAssets();
+            calculateOrderTotal();
+            pushStudentDataToCloud();
+            SoundFX.playTone(587.33, 0.2, 'sine', 0.25);
+            showToast('지원금 입금 🎁', `선생님께서 전원 지원금 +${Number(data.subsidyAmount).toLocaleString()}원을 지급하셨습니다!`, 'success');
+          }
+        }
+        if (data.lastShock && data.lastShock.timestamp !== window.lastAppliedShockTime) {
+          window.lastAppliedShockTime = data.lastShock.timestamp;
+          applyMarketShockEffect(data.lastShock.type, false);
+        }
+        if (Array.isArray(data.bannedStudents)) {
+          bannedStudents = data.bannedStudents;
+          sessionStorage.setItem('krx_banned_students', JSON.stringify(bannedStudents));
+          updateTeacherKickBadge();
+
+          const isKicked = bannedStudents.find(b => b.id === currentStudent.id || b.uid === currentUserUid);
+          if (isKicked) {
+            triggerSelfKickedScreen(isKicked.reason, isKicked.time);
+          }
+        }
+      }, (err) => {
+        console.error("Market listener error:", err);
+      });
+    }
+
+    function setupCloudStudentsListener(fb) {
+      if (!db || !currentUserUid) return;
+      const studentsColRef = fb.collection(db, 'artifacts', appId, 'public', 'data', 'classroom_students');
+
+      fb.onSnapshot(studentsColRef, (snapshot) => {
+        const studentDocs = [];
+        snapshot.forEach(docSnap => {
+          studentDocs.push(docSnap.data());
+        });
+
+        studentDocs.sort((a, b) => (b.totalAsset || 0) - (a.totalAsset || 0));
+
+        classroomStudents = studentDocs.map(item => ({
+          ...item,
+          isSelf: item.uid === currentUserUid || item.id === currentStudent.id
+        }));
+
+        updateStudentCountDisplays();
+        renderTeacherRanking();
+      }, (err) => {
+        console.error("Students listener error:", err);
+      });
+    }
+
+    async function pushStudentDataToCloud() {
+      if (!isCloudConnected || !db || !currentStudent.name) return;
+      try {
+        const { doc, setDoc } = await import("https://www.gstatic.com/firebasejs/11.6.1/firebase-firestore.js");
+        const docRef = doc(db, 'artifacts', appId, 'public', 'data', 'classroom_students', currentStudent.id);
+        
+        await setDoc(docRef, {
+          id: currentStudent.id,
+          uid: currentUserUid,
+          classNum: currentStudent.classNum,
+          studentNum: currentStudent.studentNum,
+          name: currentStudent.name,
+          cash: currentStudent.cash,
+          totalAsset: currentStudent.totalAsset,
+          profitRate: currentStudent.profitRate,
+          portfolio: currentStudent.portfolio,
+          tradeCount: currentStudent.tradeCount || 0,
+          updatedAt: Date.now()
+        }, { merge: true });
+      } catch (err) {
+        console.error("Failed to push student data to cloud:", err);
+      }
+    }
+
+    async function broadcastMarketStateToCloud(updates) {
+      if (!isCloudConnected || !db) return;
+      try {
+        const { doc, setDoc } = await import("https://www.gstatic.com/firebasejs/11.6.1/firebase-firestore.js");
+        const marketDocRef = doc(db, 'artifacts', appId, 'public', 'data', 'market_state', 'config');
+        await setDoc(marketDocRef, {
+          ...updates,
+          updatedAt: Date.now()
+        }, { merge: true });
+      } catch (err) {
+        console.error("Failed to broadcast market state:", err);
+      }
+    }
+
     window.onload = function() {
       renderCategoryChips();
       renderStockList();
@@ -1421,9 +1268,9 @@
       initCanvasResponsive();
       initKeyboardShortcuts();
       initTopNewsTicker();
-      initFirebaseCloudEngine(); // Firebase 클라우드 실시간 동기화 개시
+      initFirebaseCloudEngine();
 
-      // 세션 복원 및 강퇴 여부 검증
+      // 세션 복원
       const savedBanned = sessionStorage.getItem('krx_banned_students');
       if (savedBanned) {
         try { bannedStudents = JSON.parse(savedBanned); } catch(e) {}
@@ -1433,7 +1280,6 @@
       if (saved) {
         try {
           const parsed = JSON.parse(saved);
-          // 강퇴 명단에 존재하는지 확인
           const isBanned = bannedStudents.find(b => b.id === parsed.id);
           if (isBanned) {
             triggerSelfKickedScreen(isBanned.reason, isBanned.time);
@@ -1452,6 +1298,7 @@
       }
 
       updateTeacherKickBadge();
+      updateStudentCountDisplays();
     };
 
     function initKeyboardShortcuts() {
@@ -1486,7 +1333,6 @@
 
       const newId = `std_3_${c}_${n}_${encodeURIComponent(name)}`;
 
-      // 강퇴 차단 목록 검증
       const bannedItem = bannedStudents.find(b => b.id === newId || (b.classNum === c && b.studentNum === n && b.name === name));
       if (bannedItem) {
         triggerSelfKickedScreen(bannedItem.reason, bannedItem.time);
@@ -1509,7 +1355,6 @@
       updateStudentUI();
       document.getElementById('loginModal').classList.add('hidden');
 
-      // 클라우드에 신규 개설 계좌 등록
       pushStudentDataToCloud();
 
       SoundFX.playTone(523.25, 0.15, 'sine', 0.25);
@@ -1525,6 +1370,18 @@
       } else {
         classroomStudents.unshift({ ...currentStudent, isSelf: true });
       }
+      updateStudentCountDisplays();
+    }
+
+    function updateStudentCountDisplays() {
+      const count = classroomStudents.length;
+      const headerCountEl = document.getElementById('headerLiveStudentCount');
+      const teacherCountEl = document.getElementById('teacherTotalStudentCount');
+      const activeTabEl = document.getElementById('countActiveTab');
+
+      if (headerCountEl) headerCountEl.textContent = count;
+      if (teacherCountEl) teacherCountEl.textContent = `${count}명`;
+      if (activeTabEl) activeTabEl.textContent = count;
     }
 
     function updateStudentUI() {
@@ -1532,6 +1389,7 @@
       document.getElementById('headerStudentClass').textContent = currentStudent.name ? `3학년 ${currentStudent.classNum}반 ${currentStudent.studentNum}번` : '계좌 미개설';
       calculateAssets();
       renderPortfolio();
+      updateStudentCountDisplays();
     }
 
     function promptKickStudent(studentId) {
@@ -1552,9 +1410,6 @@
       if (modal) modal.classList.add('hidden');
     }
 
-    /**
-     * 학생 강퇴 확정 집행 (클라우드 실시간 전파)
-     */
     async function executeKickStudentAction() {
       if (!pendingKickStudentId) return;
 
@@ -1570,7 +1425,6 @@
       const now = new Date();
       const timeStr = `${String(now.getHours()).padStart(2, '0')}:${String(now.getMinutes()).padStart(2, '0')}:${String(now.getSeconds()).padStart(2, '0')}`;
 
-      // 강퇴 블랙리스트에 등록
       const bannedRecord = {
         ...target,
         bannedAt: now.toISOString(),
@@ -1580,10 +1434,8 @@
       bannedStudents.unshift(bannedRecord);
       sessionStorage.setItem('krx_banned_students', JSON.stringify(bannedStudents));
 
-      // 학급 참여자 목록에서 삭제
       classroomStudents.splice(studentIdx, 1);
 
-      // 클라우드 동기화: 강퇴 명단 브로드캐스트 및 참여 학생 컬렉션 문서 삭제
       if (isCloudConnected && db) {
         try {
           const { doc, deleteDoc } = await import("https://www.gstatic.com/firebasejs/11.6.1/firebase-firestore.js");
@@ -1597,20 +1449,17 @@
       closeKickConfirmModal();
       SoundFX.playKickSound();
 
-      // 만약 강퇴 대상이 현재 본인 브라우저의 학생인 경우
       if (target.isSelf || target.id === currentStudent.id) {
         triggerSelfKickedScreen(reason, timeStr);
       } else {
-        showToast('강퇴 집행 완료 🚨', `${target.name} 학생을 시장에서 퇴장 조치했습니다. (사유: ${reason})`, 'warning');
+        showToast('강퇴 집행 완료 🚨', `${target.name} 학생을 시장에서 퇴장 조치했습니다.`, 'warning');
       }
 
       updateTeacherKickBadge();
+      updateStudentCountDisplays();
       renderTeacherRanking();
     }
 
-    /**
-     * 강퇴된 학생 복구(재승인/차단 해제)
-     */
     async function unbanStudent(bannedId) {
       SoundFX.init();
       const idx = bannedStudents.findIndex(b => b.id === bannedId);
@@ -1625,25 +1474,21 @@
 
       classroomStudents.push(restored);
 
-      // 클라우드 차단 목록 갱신 브로드캐스트
       if (isCloudConnected && db) {
         await broadcastMarketStateToCloud({ bannedStudents: bannedStudents });
       }
 
       SoundFX.playTone(659.25, 0.15, 'sine', 0.25);
-      showToast('재승인 완료 🕊️', `${restored.name} 학생의 강퇴 조치가 해제되었습니다. 다시 시장에 참여할 수 있습니다.`, 'success');
+      showToast('재승인 완료 🕊️', `${restored.name} 학생의 강퇴 조치가 해제되었습니다.`, 'success');
 
       updateTeacherKickBadge();
+      updateStudentCountDisplays();
       renderTeacherRanking();
     }
 
-    /**
-     * 본인이 강퇴되었을 때의 풀스크린 안내 화면 트리거
-     */
     function triggerSelfKickedScreen(reason, time) {
       SoundFX.playKickSound();
       
-      // 모달 및 거래 버튼 즉시 정지
       document.getElementById('kickedTimeText').textContent = time || '방금 전';
       document.getElementById('kickedReasonText').textContent = reason || '교사의 지시에 따른 퇴장 조치';
       document.getElementById('kickedNoticeModal').classList.remove('hidden');
@@ -1653,7 +1498,6 @@
       if (btnBuy) btnBuy.disabled = true;
       if (btnSell) btnSell.disabled = true;
 
-      // 세션 파기
       sessionStorage.removeItem('krx_student_session');
     }
 
@@ -1679,13 +1523,9 @@
       const badge = document.getElementById('teacherKickBadge');
       const countEl = document.getElementById('teacherBannedCount');
       const countTabEl = document.getElementById('countBannedTab');
-      const activeTabEl = document.getElementById('countActiveTab');
-      const totalCountEl = document.getElementById('teacherTotalStudentCount');
 
       if (countEl) countEl.textContent = `${bannedStudents.length}명`;
       if (countTabEl) countTabEl.textContent = bannedStudents.length;
-      if (activeTabEl) activeTabEl.textContent = classroomStudents.length;
-      if (totalCountEl) totalCountEl.textContent = `${classroomStudents.length}명`;
 
       if (badge) {
         if (bannedStudents.length > 0) badge.classList.remove('hidden');
@@ -1745,13 +1585,21 @@
       const tbody = document.getElementById('teacherRankingTableBody');
       if (!tbody) return;
 
-      // 자산액 기준 정렬
       const sorted = [...classroomStudents].sort((a, b) => b.totalAsset - a.totalAsset);
 
       updateTeacherKickBadge();
+      updateStudentCountDisplays();
 
       if (sorted.length === 0) {
-        tbody.innerHTML = `<tr><td colspan="8" class="p-4 text-center text-slate-400 text-xs">참여 중인 학생이 없습니다.</td></tr>`;
+        tbody.innerHTML = `
+          <tr>
+            <td colspan="8" class="py-8 text-center text-slate-400">
+              <i class="fa-solid fa-user-clock text-2xl mb-1 text-slate-300"></i>
+              <p class="text-xs font-bold text-slate-600">현재 접속한 학생이 없습니다.</p>
+              <p class="text-[10px] text-slate-400 mt-0.5">학생이 로그인하면 실시간 랭킹과 자산 현황이 여기에 표시됩니다.</p>
+            </td>
+          </tr>
+        `;
         return;
       }
 
@@ -1774,7 +1622,7 @@
             <td class="py-1.5 px-2.5 text-right font-black num-font ${isUp ? 'text-rose-600' : 'text-blue-600'}">${isUp ? '+' : ''}${st.profitRate}%</td>
             <td class="py-1.5 px-2.5 text-center text-slate-500 font-mono text-[11px]">${Object.keys(st.portfolio || {}).length}종목 / ${st.tradeCount || 0}회</td>
             <td class="py-1.5 px-2.5 text-center">
-              <button onclick="promptKickStudent('${st.id}')" title="${st.name} 학생을 시장에서 즉시 강퇴합니다" class="px-2 py-0.5 rounded bg-rose-50 hover:bg-rose-600 text-rose-600 hover:text-white border border-rose-200 text-[10px] font-black transition active:scale-95 flex items-center gap-1 mx-auto shadow-2xs">
+              <button onclick="promptKickStudent('${st.id}')" title="${st.name} 학생을 시장에서 강퇴합니다" class="px-2 py-0.5 rounded bg-rose-50 hover:bg-rose-600 text-rose-600 hover:text-white border border-rose-200 text-[10px] font-black transition active:scale-95 flex items-center gap-1 mx-auto shadow-2xs">
                 <i class="fa-solid fa-user-slash text-[9px]"></i>
                 <span>강퇴</span>
               </button>
@@ -1783,6 +1631,7 @@
         `;
       }).join('');
     }
+
     function setMarketState(newState, broadcast = true) {
       marketState = newState;
       const dot = document.getElementById('marketStatusDot');
@@ -1830,7 +1679,6 @@
       }
       updateTimerDisplay();
 
-      // 교사 조작 시 클라우드 브로드캐스트
       if (broadcast) {
         broadcastMarketStateToCloud({
           marketState: marketState,
@@ -1862,13 +1710,8 @@
         tagEl.textContent = `${news.cat} · ${news.tag}`;
       }
 
-      if (titleEl) {
-        titleEl.textContent = news.title;
-      }
-
-      if (counterEl) {
-        counterEl.textContent = `${currentNewsIndex + 1}/${MARKET_NEWS_DATABASE.length}`;
-      }
+      if (titleEl) titleEl.textContent = news.title;
+      if (counterEl) counterEl.textContent = `${currentNewsIndex + 1}/${MARKET_NEWS_DATABASE.length}`;
 
       if (pillsContainer) {
         pillsContainer.innerHTML = news.relatedCodes.map(code => {
@@ -1913,7 +1756,7 @@
       const stock = ALL_STOCKS.find(s => s.id === stockId);
       if (stock) {
         SoundFX.playTone(659.25, 0.1, 'sine', 0.2);
-        showToast('뉴스 연계 종목 선택', `[${stock.name}] 시세 화면으로 이동했습니다. 관련 호재/악재를 분석해보세요!`, 'info');
+        showToast('뉴스 연계 종목 선택', `[${stock.name}] 화면으로 이동했습니다.`, 'info');
       }
     }
 
@@ -1987,11 +1830,6 @@
     function selectStockFromNewsModal(stockId) {
       toggleAllNewsModal(false);
       selectStock(stockId);
-      const stock = ALL_STOCKS.find(s => s.id === stockId);
-      if (stock) {
-        SoundFX.playTone(659.25, 0.1, 'sine', 0.2);
-        showToast('종목 선택 완료', `${stock.name} 종목으로 이동했습니다. 기업 설명과 그래프를 확인하세요!`, 'success');
-      }
     }
 
     function initMarketTimer() {
@@ -2011,9 +1849,6 @@
             SoundFX.playWarning();
             showNewsBanner('🚨 [장 마감 1분 전] 오늘 장 마감이 임박했습니다!');
             showToast('장 마감 1분 전', '거래를 서둘러 마무리하세요.', 'warning');
-          } else if (marketSeconds === 30) {
-            SoundFX.playTone(880, 0.1, 'square', 0.2);
-            showNewsBanner('⚡ [장 마감 30초 전] 곧 모든 매수/매도 거래가 종료됩니다.');
           }
 
           if (marketSeconds <= 0) closeMarket();
@@ -2044,7 +1879,7 @@
 
     function closeMarket() {
       setMarketState('CLOSED');
-      showNewsBanner('🔔 [오늘 정규장 마감] 오늘의 시장 거래가 공식 마감되었습니다. 최종 수익률을 확인하세요!');
+      showNewsBanner('🔔 [오늘 정규장 마감] 오늘의 시장 거래가 공식 마감되었습니다.');
       showToast('정규장 마감', `최종 평가자산: ${Number(currentStudent.totalAsset).toLocaleString()}원 (${currentStudent.profitRate}%)`, 'info');
     }
 
@@ -2134,117 +1969,6 @@
       renderStockList();
       updateSelectedStockView();
       calculateOrderTotal();
-    }
-
-    const KOSDAQ_CODES = new Set([
-      '086520', '247540', '196170', '028300', '263750', '293490', '225570',
-      '058470', '039030', '357780', '240810', '066970', '035900', '041510',
-      '253450', '192820', '161890', '112040', '005500', '091810'
-    ]);
-
-    function getKrxTickerSymbol(code) {
-      return KOSDAQ_CODES.has(code) ? `${code}.KQ` : `${code}.KS`;
-    }
-
-    async function fetchKrxLivePrice(stockCode) {
-      const symbol = getKrxTickerSymbol(stockCode);
-      const naverUrl = `https://m.stock.naver.com/api/stock/${stockCode}/basic`;
-      const yahooUrl = `https://query1.finance.yahoo.com/v8/finance/chart/${symbol}?interval=1d&range=1d`;
-      const proxyUrls = [
-        `https://api.allorigins.win/raw?url=${encodeURIComponent(naverUrl)}`,
-        `https://api.allorigins.win/raw?url=${encodeURIComponent(yahooUrl)}`,
-        `https://corsproxy.io/?${encodeURIComponent(yahooUrl)}`
-      ];
-
-      for (const url of proxyUrls) {
-        try {
-          const controller = new AbortController();
-          const timeoutId = setTimeout(() => controller.abort(), 2500);
-          const res = await fetch(url, { signal: controller.signal });
-          clearTimeout(timeoutId);
-          if (!res.ok) continue;
-          const text = await res.text();
-          let data;
-          try { data = JSON.parse(text); } catch (e) { continue; }
-          if (data && data.closePrice) {
-            const curP = parseInt(String(data.closePrice).replace(/,/g, ''), 10);
-            const diffP = parseInt(String(data.compareToPreviousClosePrice || '0').replace(/,/g, ''), 10);
-            const prevClose = curP - diffP;
-            if (curP > 0) return { price: curP, prevClose: prevClose > 0 ? prevClose : curP };
-          }
-          const meta = data?.chart?.result?.[0]?.meta;
-          if (meta && meta.regularMarketPrice) {
-            return {
-              price: Math.round(meta.regularMarketPrice),
-              prevClose: Math.round(meta.chartPreviousClose || meta.previousClose || meta.regularMarketPrice)
-            };
-          }
-        } catch (e) {}
-      }
-      throw new Error('NETWORK_RESTRICTED');
-    }
-
-    async function syncSingleStockLive(stockId) {
-      const stock = ALL_STOCKS.find(s => s.id === stockId);
-      if (!stock) return;
-      const icon = document.getElementById('syncIcon');
-      const text = document.getElementById('syncText');
-      if (icon) icon.classList.add('fa-spin');
-      if (text) text.textContent = '조회 중...';
-      try {
-        const live = await fetchKrxLivePrice(stockId);
-        stock.base = live.prevClose > 0 ? live.prevClose : stock.base;
-        stock.price = alignToKrxTick(live.price);
-        stock.diff = stock.price - stock.base;
-        stock.rate = Number(((stock.diff / stock.base) * 100).toFixed(2));
-        stock.limitHigh = alignToKrxTick(stock.base * 1.30);
-        stock.limitLow = alignToKrxTick(stock.base * 0.70);
-        stock.history.push(stock.price);
-        if (stock.history.length > 50) stock.history.shift();
-
-        updateSelectedStockView();
-        calculateAssets();
-        renderStockList();
-        renderPortfolio();
-        showToast('실제 KRX 시세 연동', `${stock.name}: 실제 현재가 ${stock.price.toLocaleString()}원으로 동기화되었습니다.`, 'success');
-      } catch (err) {
-        showToast('네트워크 안내', '학교망 제한으로 시뮬레이터 호가 엔진이 계속 동작합니다.', 'info');
-      } finally {
-        if (icon) icon.classList.remove('fa-spin');
-        if (text) text.textContent = '실제 현재가 조회';
-      }
-    }
-
-    async function syncTopStocksLive() {
-      showToast('실제 시세 동기화 시작', '대표 종목들의 실제 한국거래소 주가를 조회합니다...', 'info');
-      const targetCodes = ['005930', '000660', '003230', '005380', '035420'];
-      let successCount = 0;
-      for (const code of targetCodes) {
-        try {
-          const live = await fetchKrxLivePrice(code);
-          const stock = ALL_STOCKS.find(s => s.id === code);
-          if (stock) {
-            stock.base = live.prevClose > 0 ? live.prevClose : stock.base;
-            stock.price = alignToKrxTick(live.price);
-            stock.diff = stock.price - stock.base;
-            stock.rate = Number(((stock.diff / stock.base) * 100).toFixed(2));
-            stock.limitHigh = alignToKrxTick(stock.base * 1.30);
-            stock.limitLow = alignToKrxTick(stock.base * 0.70);
-            stock.history.push(stock.price);
-            if (stock.history.length > 50) stock.history.shift();
-            successCount++;
-          }
-        } catch (e) {}
-      }
-      if (successCount > 0) {
-        updateSelectedStockView();
-        calculateAssets();
-        renderStockList();
-        renderPortfolio();
-        showToast('동기화 완료', `대표 ${successCount}개 종목의 실제 주가가 반영되었습니다.`, 'success');
-      } else {
-        showToast('제한된 네트워크 환경', '외부 금융망 접속이 차단되어 독립 시뮬레이터로 계속 진행합니다.', 'warning');
-      }
     }
 
     function updateSelectedStockView() {
@@ -2485,7 +2209,7 @@
         }
       }
 
-      // 동시 체결
+      // 복수 종목 시세 동시 갱신
       const count = 20 + Math.floor(Math.random() * 15);
       for (let i = 0; i < count; i++) {
         const stock = ALL_STOCKS[Math.floor(Math.random() * ALL_STOCKS.length)];
@@ -2505,17 +2229,15 @@
         if (stock.history.length > 50) stock.history.shift();
       }
 
-      // 다른 학생들의 자산 가치도 시세 변동에 맞춰 미세 변동 반영
+      // 실제 참여 학생들의 보유 포트폴리오 가치 실시간 재계산
       classroomStudents.forEach(st => {
-        if (!st.isSelf) {
-          let evalVal = 0;
-          for (const [code, item] of Object.entries(st.portfolio || {})) {
-            const s = ALL_STOCKS.find(stk => stk.id === code);
-            if (s) evalVal += s.price * item.qty;
-          }
-          st.totalAsset = st.cash + evalVal;
-          st.profitRate = Number((((st.totalAsset - SEED_MONEY) / SEED_MONEY) * 100).toFixed(2));
+        let evalVal = 0;
+        for (const [code, item] of Object.entries(st.portfolio || {})) {
+          const s = ALL_STOCKS.find(stk => stk.id === code);
+          if (s) evalVal += s.price * item.qty;
         }
+        st.totalAsset = st.cash + evalVal;
+        st.profitRate = Number((((st.totalAsset - SEED_MONEY) / SEED_MONEY) * 100).toFixed(2));
       });
 
       updateSelectedStockView();
@@ -2635,7 +2357,6 @@
       renderTeacherRanking();
       sessionStorage.setItem('krx_student_session', JSON.stringify(currentStudent));
 
-      // 매매 체결 즉시 클라우드에 최신 평가 자산과 포트폴리오 업로드 (30명 동시 랭킹 반영)
       pushStudentDataToCloud();
     }
 
@@ -2728,7 +2449,7 @@
           { id: 'TECH_AI_SURGE', name: '🌟 AI 데이터센터 서버 주문 폭주 (+12%)', desc: '빅테크 기업의 초고성능 HBM 메모리 선점 경쟁', mult: 1.12 },
           { id: 'TECH_CHIP_PRICE_UP', name: '📈 D램·낸드 고정가격 급반등 (+16%)', desc: '공급 부족으로 반도체 판가 인상 어닝 서프라이즈', mult: 1.16 },
           { id: 'TECH_NANO_SUCCESS', name: '🚀 차세대 초미세 공정 수율 돌파 (+20%)', desc: '최첨단 2나노·HBM4 양산 세계 최초 성공', mult: 1.20 },
-          { id: 'TECH_MEGA_CLUSTER', name: '👑 반도체 클러스터 세제 혜택 (+25%)', desc: '정부 국가전략기술 세액공제 및 인프라 전폭 지원', mult: 1.25 }
+          { id: 'TECH_MEGA_CLUSTER', name: '👑 반도체 클러스터 세제 혜택 (+25%)', desc: '정부 국가전략기술 세액공제 전폭 지원', mult: 1.25 }
         ],
         bad: [
           { id: 'TECH_IT_SLOW', name: '📉 PC·스마트폰 수요 둔화 (-10%)', desc: '글로벌 완제품 재고 누적 및 주문 축소', mult: 0.90 },
@@ -2830,13 +2551,13 @@
           { id: 'FIN_VALUE_UP', name: '🌟 정부 기업 밸류업 프로그램 수혜 (+12%)', desc: '자사주 소각·배당 성향 대폭 확대로 주주가치 제고', mult: 1.12 },
           { id: 'FIN_NIM_IMPROVE', name: '📈 순이자마진(NIM) 방어 최대 이익 (+16%)', desc: '자산 관리 및 비이자 수익 증가 어닝 서프라이즈', mult: 1.16 },
           { id: 'FIN_SUPER_APP', name: '🚀 디지털 금융 플랫폼 이용자 2천만 (+20%)', desc: '간편 결제·외환 트래블 서비스 대흥행', mult: 1.20 },
-          { id: 'FIN_RECORD_DIVIDEND', name: '👑 파격적 분기 배당금 상향 및 환원 (+25%)', desc: '배당수익률 7% 돌파로 기관·외국인 매수 집중', mult: 1.25 }
+          { id: 'FIN_RECORD_DIVIDEND', name: '👑 파격적 분기 배당금 상향 및 환원 (+25%)', desc: '배당수익률 7% 돌파로 기관 매수 집중', mult: 1.25 }
         ],
         bad: [
           { id: 'FIN_RATE_CUT_MARGIN', name: '📉 기준금리 인하 기조 예대마진 축소 (-10%)', desc: '이자 수익 감소로 은행 지주 수익성 압박', mult: 0.90 },
           { id: 'FIN_DELINQUENCY_UP', name: '⚠️ 대출 연체율 상승 충당금 부담 (-14%)', desc: '대손충당금 대규모 추가 적립으로 순이익 감소', mult: 0.86 },
           { id: 'FIN_REGULATION_STRICT', name: '⚖️ 가계대출 총량 규제 및 DSR 강화 (-18%)', desc: '신규 주택담보대출 한도 축소로 대출 성장 둔화', mult: 0.82 },
-          { id: 'FIN_WINDFALL_TAX', name: '🚨 상생금융 분담금 및 사회공헌 압박 (-24%)', desc: '금융 취약계층 지원을 위한 수천억 원대 비용 지출', mult: 0.76 }
+          { id: 'FIN_WINDFALL_TAX', name: '🚨 상생금융 분담금 및 사회공헌 압박 (-24%)', desc: '금융 취약계층 지원을 위한 비용 지출', mult: 0.76 }
         ]
       }
     };
@@ -2991,29 +2712,6 @@
       renderTeacherRanking();
     }
 
-    function toggleNetworkConfigModal(show = true) {
-      document.getElementById('networkModal').classList.toggle('hidden', !show);
-    }
-
-    function setEngineMode(mode) {
-      engineMode = mode;
-      const dot = document.getElementById('netStatusDot');
-      const text = document.getElementById('netStatusText');
-      const syncBtn = document.getElementById('btnSyncCurrentStock');
-
-      if (mode === 'sim') {
-        dot.className = 'w-2 h-2 rounded-full bg-emerald-500 animate-pulse';
-        text.textContent = 'KRX 시뮬레이터 (교사 설정)';
-        if (syncBtn) syncBtn.classList.add('hidden');
-        showToast('오프라인 정밀 모드', '학교 인트라넷에서도 완전하게 동작하는 독립형 시뮬레이터로 설정되었습니다.', 'info');
-      } else {
-        dot.className = 'w-2 h-2 rounded-full bg-blue-500 animate-pulse';
-        text.textContent = '외부 API 연동 (교사 설정)';
-        if (syncBtn) syncBtn.classList.remove('hidden');
-        showToast('실시간 API 연동 모드', '외부 금융망 실시간 시세 연동 모드로 설정되었습니다.', 'info');
-      }
-    }
-
     function teacherToggleMarketControl() {
       if (marketState === 'WAITING' || marketState === 'CLOSED') setMarketState('ACTIVE');
       else if (marketState === 'ACTIVE') setMarketState('PAUSED');
@@ -3067,7 +2765,6 @@
       sessionStorage.setItem('krx_student_session', JSON.stringify(currentStudent));
       renderTeacherRanking();
 
-      // 전원 지급 이벤트를 클라우드로 발송하여 30명 전원 잔고 동시 증가
       broadcastMarketStateToCloud({
         lastSubsidyTimestamp: Date.now(),
         subsidyAmount: amount
@@ -3212,7 +2909,6 @@
       renderPortfolio();
       renderTeacherRanking();
 
-      // 교사가 쇼크를 유발한 경우 클라우드 브로드캐스트
       if (broadcast) {
         broadcastMarketStateToCloud({
           lastShock: {
