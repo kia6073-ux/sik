@@ -129,9 +129,10 @@
         </div>
       </div>
 
-      <!-- 교사 관제 모달 바로가기 (단축키 Ctrl+1 및 Ctrl+2 안내) -->
-      <button onclick="toggleTeacherModal(true)" title="교사용 관제 센터 (단축키: Ctrl + 1 / 교사모드: Ctrl + 2)" class="w-7 h-7 rounded-lg bg-slate-100 hover:bg-slate-200 text-slate-600 flex items-center justify-center text-xs transition relative">
+      <!-- 교사 관제 모달 바로가기 (단축키 안내: Ctrl+2 / F2) -->
+      <button onclick="toggleTeacherModal(true)" title="교사용 관제 센터 (단축키: Ctrl + 2 또는 F2)" class="px-2 h-7 rounded-lg bg-indigo-50 hover:bg-indigo-100 border border-indigo-200 text-indigo-700 flex items-center gap-1 text-xs font-bold transition relative">
         <i class="fa-solid fa-chalkboard-user"></i>
+        <span class="hidden sm:inline text-[11px]">교사 모드</span>
         <span id="teacherKickBadge" class="hidden absolute -top-1 -right-1 w-2.5 h-2.5 bg-rose-500 rounded-full border border-white"></span>
       </button>
     </div>
@@ -248,10 +249,6 @@
               <span id="detailLimitHigh" class="text-[10px] font-black text-rose-600 bg-rose-50 border border-rose-200 px-1.5 py-0.5 rounded num-font">상 369,000</span>
               <span id="detailLimitLow" class="text-[10px] font-black text-blue-600 bg-blue-50 border border-blue-200 px-1.5 py-0.5 rounded num-font">하 199,000</span>
             </div>
-            <button id="btnSyncCurrentStock" onclick="syncSingleStockLive(selectedStockId)" title="외부 금융망에서 오늘 실제 KRX 현재가를 가져옵니다" class="hidden mt-1 px-1.5 py-0.5 bg-indigo-50 hover:bg-indigo-100 text-indigo-700 border border-indigo-200 rounded text-[9px] font-bold flex items-center gap-1 ml-auto transition active:scale-95">
-              <i id="syncIcon" class="fa-solid fa-arrows-rotate text-[8px]"></i>
-              <span id="syncText">실제 현재가 조회</span>
-            </button>
           </div>
         </div>
 
@@ -426,27 +423,35 @@
         </button>
       </form>
 
+      <!-- 교사 모드 원클릭 직행 버튼 -->
       <div class="mt-3 pt-2.5 border-t border-slate-100">
-        <button onclick="enterTeacherMode()" type="button" class="w-full py-1.5 rounded-lg bg-slate-100 hover:bg-indigo-50 hover:text-indigo-600 text-slate-500 text-[11px] font-bold transition flex items-center justify-center gap-1.5 border border-slate-200 hover:border-indigo-200">
-          <i class="fa-solid fa-chalkboard-user text-indigo-500"></i>
-          <span>선생님이신가요? <strong>교사 모드 즉시 진입 (Ctrl + 2)</strong></span>
+        <button onclick="enterTeacherMode()" type="button" class="w-full py-2 rounded-xl bg-indigo-50 hover:bg-indigo-100 text-indigo-700 text-xs font-black transition flex items-center justify-center gap-1.5 border border-indigo-200 hover:border-indigo-300 shadow-2xs active:scale-95">
+          <i class="fa-solid fa-chalkboard-user text-indigo-600"></i>
+          <span>선생님이신가요? <strong>교사 모드 즉시 진입 (Ctrl + 2 / F2)</strong></span>
         </button>
       </div>
     </div>
   </div>
-  <!-- 5. 교사용 실시간 관제 센터 (단축키 Ctrl + 1) -->
+
+  <!-- 5. 교사용 실시간 관제 센터 (단축키 Ctrl + 2 또는 F2) -->
+  <div id="teacherModal" class="hidden fixed inset-0 bg-slate-900/70 backdrop-blur-xs z-50 flex items-center justify-center p-3">
+    <div class="bg-white rounded-2xl border border-slate-200 shadow-2xl max-w-4xl w-full p-4 flex flex-col max-h-[92vh] overflow-hidden">
+      <!-- 교사용 헤더 -->
+      <div class="flex items-center justify-between pb-2 border-b border-slate-200 flex-shrink-0">
+        <div class="flex items-center gap-2">
+          <div class="w-8 h-8 rounded-lg bg-indigo-600 text-white flex items-center justify-center text-xs font-black">
             <i class="fa-solid fa-chalkboard-user"></i>
           </div>
           <div>
             <div class="flex items-center gap-1.5">
               <h3 class="text-sm font-black text-slate-900">교사용 실시간 관제 센터</h3>
-              <span class="px-1.5 py-0.2 rounded text-[9px] font-black bg-rose-50 text-rose-700 border border-rose-200">단축키 Ctrl+1</span>
+              <span class="px-1.5 py-0.2 rounded text-[9px] font-black bg-rose-50 text-rose-700 border border-rose-200">단축키: Ctrl + 2 / F2</span>
               <span class="px-1.5 py-0.2 rounded text-[9px] font-black bg-emerald-50 text-emerald-700 border border-emerald-200">실시간 연동</span>
             </div>
             <p class="text-[10px] text-slate-500">장 운영 제어, 학생 관리 및 강퇴 조치, 상위 업종 시나리오 주입</p>
           </div>
         </div>
-        <button onclick="toggleTeacherModal(false)" class="w-7 h-7 rounded-lg bg-slate-100 hover:bg-slate-200 text-slate-600 flex items-center justify-center">
+        <button onclick="toggleTeacherModal(false)" class="w-7 h-7 rounded-lg bg-slate-100 hover:bg-slate-200 text-slate-600 flex items-center justify-center transition">
           <i class="fa-solid fa-xmark text-xs"></i>
         </button>
       </div>
@@ -650,7 +655,7 @@
     </div>
   </div>
 
-  <!-- 5.5. 사용자 강퇴 확인 모달 (Custom Modal) -->
+  <!-- 5.5. 사용자 강퇴 확인 모달 -->
   <div id="kickConfirmModal" class="hidden fixed inset-0 bg-slate-900/70 backdrop-blur-xs z-50 flex items-center justify-center p-4">
     <div class="bg-white rounded-2xl border border-rose-200 shadow-2xl max-w-sm w-full p-5 text-left">
       <div class="flex items-center gap-2.5 pb-2.5 border-b border-slate-100">
@@ -1082,7 +1087,7 @@
       isSelf: true
     };
 
-    // 가상 더미 학생 없이 실제 접속한 학생만 담는 동적 배열 (0명에서 시작)
+    // 더미 학생 없는 실제 접속 학생 배열 (초기값 0명)
     let classroomStudents = [];
 
     // 강퇴된 학생 목록
@@ -1092,7 +1097,6 @@
     let selectedStockId = '005930';
     let currentSectorFilter = 'ALL';
     let currentSearchTerm = '';
-    let engineMode = 'sim';
 
     let marketConfigMinutes = 10;
     let marketState = 'WAITING';
@@ -1100,9 +1104,6 @@
     let marketTimerInterval = null;
     let priceTickTimer = null;
 
-    /* ==========================================================
-       3. Firebase Cloud Firestore 실시간 연동 (선택적)
-       ========================================================== */
     const appId = typeof __app_id !== 'undefined' ? __app_id : 'krx-stock-class-real';
     let firebaseApp = null;
     let auth = null;
@@ -1125,7 +1126,7 @@
         auth = getAuth(firebaseApp);
         db = getFirestore(firebaseApp);
 
-        // RULE 3: 선행 인증
+        // 선행 인증 처리
         if (typeof __initial_auth_token !== 'undefined' && __initial_auth_token) {
           await signInWithCustomToken(auth, __initial_auth_token);
         } else {
@@ -1260,6 +1261,9 @@
     }
 
     window.onload = function() {
+      // 윈도우 포커스 확보
+      window.focus();
+
       renderCategoryChips();
       renderStockList();
       selectStock(selectedStockId);
@@ -1268,7 +1272,7 @@
       initCanvasResponsive();
       initKeyboardShortcuts();
       initTopNewsTicker();
-      initFirebaseCloudEngine(); // Firebase 클라우드 실시간 동기화 개시
+      initFirebaseCloudEngine();
 
       // 세션 복원 및 강퇴 여부 검증
       const savedBanned = sessionStorage.getItem('krx_banned_students');
@@ -1280,7 +1284,6 @@
       if (saved) {
         try {
           const parsed = JSON.parse(saved);
-          // 강퇴 명단에 존재하는지 확인
           const isBanned = bannedStudents.find(b => b.id === parsed.id);
           if (isBanned) {
             triggerSelfKickedScreen(isBanned.reason, isBanned.time);
@@ -1299,22 +1302,50 @@
       }
 
       updateTeacherKickBadge();
+      updateStudentCountDisplays();
     };
 
+    /**
+     * 키보드 단축키 등록 (Ctrl+2, Cmd+2, Alt+2, F2 완벽 지원)
+     */
     function initKeyboardShortcuts() {
-      window.addEventListener('keydown', (e) => {
-        // 단축키 Ctrl + 1: 교사용 모달 열고 닫기
-        if ((e.ctrlKey || e.metaKey) && e.key === '1') {
+      const handleGlobalKey = (e) => {
+        // 1) F2 키: 브라우저 탭 이동 충돌 없이 100% 즉시 교사 모드 진입
+        if (e.key === 'F2' || e.code === 'F2') {
           e.preventDefault();
-          const modal = document.getElementById('teacherModal');
-          toggleTeacherModal(modal.classList.contains('hidden'));
-        }
-        // 단축키 Ctrl + 2: 로그인 없이 교사 모드 즉시 진입
-        if ((e.ctrlKey || e.metaKey) && (e.key === '2' || e.code === 'Digit2')) {
-          e.preventDefault();
+          e.stopPropagation();
           enterTeacherMode();
+          return;
         }
-      });
+
+        const isCtrlOrCmd = e.ctrlKey || e.metaKey;
+        const isAlt = e.altKey;
+        const isDigit2 = e.key === '2' || e.code === 'Digit2' || e.code === 'Numpad2';
+        const isDigit1 = e.key === '1' || e.code === 'Digit1' || e.code === 'Numpad1';
+
+        // 2) Ctrl + 2 또는 Cmd + 2 또는 Alt + 2: 로그인 없이 교사 모드 즉시 진입
+        if ((isCtrlOrCmd || isAlt) && isDigit2) {
+          e.preventDefault();
+          e.stopPropagation();
+          enterTeacherMode();
+          return;
+        }
+
+        // 3) Ctrl + 1 또는 Cmd + 1 또는 Alt + 1: 관제 센터 모달 토글
+        if ((isCtrlOrCmd || isAlt) && isDigit1) {
+          e.preventDefault();
+          e.stopPropagation();
+          const modal = document.getElementById('teacherModal');
+          if (modal) {
+            toggleTeacherModal(modal.classList.contains('hidden'));
+          }
+          return;
+        }
+      };
+
+      // 캡처 페이즈 등록으로 브라우저 및 내부 폼 우선 가로채기
+      window.addEventListener('keydown', handleGlobalKey, { capture: true });
+      document.addEventListener('keydown', handleGlobalKey, { capture: true });
     }
 
     /**
@@ -1327,7 +1358,11 @@
       const loginModal = document.getElementById('loginModal');
       if (loginModal) loginModal.classList.add('hidden');
 
-      // 2. 교사/관리자 계정 상태 설정
+      // 2. 강퇴 알림 모달이 열려 있다면 닫기
+      const kickedModal = document.getElementById('kickedNoticeModal');
+      if (kickedModal) kickedModal.classList.add('hidden');
+
+      // 3. 교사/관리자 계정 상태 설정
       currentStudent.isTeacher = true;
       currentStudent.name = '선생님 (관리자)';
       currentStudent.classNum = 0;
@@ -1339,17 +1374,17 @@
       if (headerName) headerName.textContent = '선생님 (교사)';
       if (headerClass) headerClass.textContent = '관제 관리자 계정';
 
-      // 3. 교사용 실시간 관제 센터 즉시 열기
+      // 4. 교사용 실시간 관제 센터 즉시 열기
       toggleTeacherModal(true);
 
       SoundFX.playTone(587.33, 0.15, 'sine', 0.25);
-      showToast('교사 모드 진입 👑', '로그인 없이 교사용 관제 센터에 접속했습니다. (단축키: Ctrl + 2)', 'success');
+      showToast('교사 관제 모드 진입 👑', '로그인 없이 관제 센터에 접속했습니다. (단축키: Ctrl + 2 또는 F2)', 'success');
     }
 
     function openLoginModal(canClose = true) {
       const modal = document.getElementById('loginModal');
-      modal.classList.remove('hidden');
-      if (currentStudent.name) {
+      if (modal) modal.classList.remove('hidden');
+      if (currentStudent.name && !currentStudent.isTeacher) {
         document.getElementById('inputStudentClass').value = currentStudent.classNum;
         document.getElementById('inputStudentNumber').value = currentStudent.studentNum;
         document.getElementById('inputStudentName').value = currentStudent.name;
@@ -1384,6 +1419,7 @@
       currentStudent.tradeCount = 0;
       currentStudent.id = newId;
       currentStudent.isSelf = true;
+      currentStudent.isTeacher = false;
 
       syncCurrentStudentToClassroom();
       sessionStorage.setItem('krx_student_session', JSON.stringify(currentStudent));
@@ -1398,7 +1434,7 @@
     }
 
     function syncCurrentStudentToClassroom() {
-      if (!currentStudent.name) return;
+      if (!currentStudent.name || currentStudent.isTeacher) return;
       const existingIdx = classroomStudents.findIndex(s => s.isSelf || s.id === currentStudent.id);
       if (existingIdx >= 0) {
         classroomStudents[existingIdx] = { ...currentStudent, isSelf: true };
@@ -2602,6 +2638,7 @@
 
     function toggleTeacherModal(show) {
       const modal = document.getElementById('teacherModal');
+      if (!modal) return;
       if (show) {
         modal.classList.remove('hidden');
         renderTeacherRanking();
