@@ -84,9 +84,9 @@
       <div class="ml-1 hidden lg:flex items-center gap-1.5 bg-slate-50 border border-slate-200 rounded-lg px-2 py-1 text-xs font-bold">
         <span id="netStatusDot" class="w-2 h-2 rounded-full bg-amber-500 animate-pulse"></span>
         <span id="netStatusText" class="text-slate-700">네트워크 연결 중...</span>
-        <button onclick="copyClassRoomLink()" title="클릭 시 학생 초대 링크 복사" class="ml-1 px-1.5 py-0.5 rounded bg-indigo-100 hover:bg-indigo-200 text-indigo-700 text-[10px] font-mono flex items-center gap-1 transition cursor-pointer">
-          <i class="fa-solid fa-link text-[9px]"></i>
-          <span id="roomCodeBadge">ROOM: 1반</span>
+        <button onclick="copyClassRoomLink()" title="클릭 시 학생 초대 링크 복사" class="ml-1 px-2 py-0.5 rounded bg-indigo-50 hover:bg-indigo-100 text-indigo-700 text-[11px] font-bold border border-indigo-200 flex items-center gap-1 transition cursor-pointer">
+          <i class="fa-solid fa-link text-[10px]"></i>
+          <span id="roomCodeBadge">초대 링크 복사</span>
         </button>
       </div>
     </div>
@@ -217,16 +217,16 @@
         </div>
       </div>
 
-      <!-- 종목 리스트 -->
-      <div id="stockListContainer" class="flex-1 min-h-0 overflow-y-auto divide-y divide-slate-100"></div>
+      <!-- 종목 리스트 (크롬북 하단 짤림 방지용 pb-16 적용) -->
+      <div id="stockListContainer" class="flex-1 min-h-0 overflow-y-auto divide-y divide-slate-100 pb-16"></div>
     </section>
 
     <!-- 중앙 컬럼: 기업 상세 및 실시간 캔버스 시세 차트 -->
     <section class="col-span-12 md:col-span-5 xl:col-span-6 flex flex-col min-h-0 gap-1.5 overflow-hidden">
       
-      <!-- 상단 기업 요약 및 가격제한폭 게이지 -->
-      <div id="stockDetailCard" class="bg-white rounded-xl border border-slate-200 p-2.5 flex flex-col gap-1.5 shadow-2xs flex-shrink-0 transition-colors">
-        <div class="flex items-start justify-between">
+      <!-- 상단 기업 요약 및 가격제한폭 게이지 (크롬북 기준가 짤림 방지 최적화) -->
+      <div id="stockDetailCard" class="bg-white rounded-xl border border-slate-200 p-2 flex flex-col gap-1 shadow-2xs flex-shrink-0 transition-colors">
+        <div class="flex items-start justify-between gap-1">
           <div>
             <div class="flex items-center gap-1.5 flex-wrap">
               <span id="detailStockIcon" class="text-xl">📱</span>
@@ -242,18 +242,19 @@
             </div>
           </div>
 
-          <!-- 상한가 / 하한가 정보 -->
-          <div class="text-right">
+          <!-- 기준가 및 가격제한폭 뱃지 (줄바꿈 없이 명확히 표기) -->
+          <div class="text-right flex-shrink-0">
             <div class="text-[10px] font-bold text-slate-400">KRX 가격제한폭 (±30%)</div>
             <div class="flex items-center gap-1 mt-0.5">
-              <span id="detailLimitHigh" class="text-[11px] font-black text-rose-600 bg-rose-50 border border-rose-200 px-1.5 py-0.5 rounded num-font">상 369,000</span>
-              <span id="detailLimitLow" class="text-[11px] font-black text-blue-600 bg-blue-50 border border-blue-200 px-1.5 py-0.5 rounded num-font">하 199,000</span>
+              <span id="detailBasePrice" class="text-[10px] font-black text-slate-600 bg-slate-100 border border-slate-200 px-1.5 py-0.5 rounded num-font">기준 284,000</span>
+              <span id="detailLimitHigh" class="text-[10px] font-black text-rose-600 bg-rose-50 border border-rose-200 px-1.5 py-0.5 rounded num-font">상 369,000</span>
+              <span id="detailLimitLow" class="text-[10px] font-black text-blue-600 bg-blue-50 border border-blue-200 px-1.5 py-0.5 rounded num-font">하 199,000</span>
             </div>
           </div>
         </div>
 
         <!-- 기업 설명 -->
-        <p id="detailStockDesc" class="text-xs font-medium text-slate-700 bg-slate-50 p-1.5 rounded-lg leading-relaxed border border-slate-100">
+        <p id="detailStockDesc" class="text-xs font-medium text-slate-700 bg-slate-50 p-1.5 rounded-lg leading-snug border border-slate-100 truncate">
           갤럭시 스마트폰, DRAM, 초고성능 HBM 메모리를 만드는 한국 시가총액 1위 대표 기업입니다.
         </p>
 
@@ -261,7 +262,7 @@
         <div class="space-y-0.5">
           <div class="flex justify-between text-[10px] font-black">
             <span class="text-blue-600">하한가 (-30%)</span>
-            <span class="text-slate-400">기준가 (0%)</span>
+            <span id="detailGaugeBaseLabel" class="text-slate-500 font-bold">기준가 (0%)</span>
             <span class="text-rose-600">상한가 (+30%)</span>
           </div>
           <div class="w-full h-1.5 bg-slate-100 rounded-full overflow-hidden flex border border-slate-200">
@@ -366,7 +367,7 @@
           <span id="portfolioCountBadge" class="text-xs font-bold text-slate-500 bg-slate-100 px-1.5 py-0.2 rounded">0종목</span>
         </div>
 
-        <div id="portfolioListContainer" class="flex-1 min-h-0 overflow-y-auto divide-y divide-slate-100 pt-1">
+        <div id="portfolioListContainer" class="flex-1 min-h-0 overflow-y-auto divide-y divide-slate-100 pt-1 pb-14">
           <div id="emptyPortfolioView" class="h-full flex flex-col items-center justify-center text-slate-400 py-3 text-center">
             <i class="fa-solid fa-chart-pie text-xl mb-1 text-slate-300"></i>
             <p class="text-xs font-bold text-slate-500">보유 종목이 없습니다.</p>
@@ -939,10 +940,13 @@
 
   <script>
     /* ==========================================================
-       0. 실시간 교실 네트워크 (BroadcastChannel + 다중 브로커 MQTT Failover)
+       0. 실시간 교실 네트워크 (1반 고정 제거 및 순수 URL 복사 지원)
        ========================================================== */
     const urlParams = new URLSearchParams(window.location.search);
-    const CLASS_ROOM_ID = urlParams.get('room') || '1반';
+    const rawRoom = urlParams.get('room');
+    // 사용자가 직접 ?room=을 넣지 않은 경우 기본값으로 '1반'을 강제하지 않고 빈 문자열로 처리
+    const CLASS_ROOM_ID = rawRoom && rawRoom.trim() !== '1반' ? rawRoom.trim() : (rawRoom === '1반' ? '1반' : '');
+    const MQTT_TOPIC_ROOM = CLASS_ROOM_ID ? encodeURIComponent(CLASS_ROOM_ID) : 'krx_public_room';
     
     // 교실 브로커 목록 (1번 실패 시 2번으로 자동 페일오버)
     const BROKER_SERVERS = [
@@ -951,16 +955,16 @@
     ];
     let currentBrokerIndex = 0;
     
-    const MQTT_TOPIC_ROOT = `krx_class_channel/${encodeURIComponent(CLASS_ROOM_ID)}`;
+    const MQTT_TOPIC_ROOT = `krx_class_channel/${MQTT_TOPIC_ROOM}`;
     const CLIENT_UNIQUE_ID = 'krx_' + Math.random().toString(36).substring(2, 10);
 
     let mqttClient = null;
     let isNetworkOnline = false;
     let localBroadcastChannel = null;
 
-    // 브라우저 탭 간 즉시 통신 채널 초기화 (동일 PC / 시크릿 창 테스트 100% 보장)
+    // 브라우저 탭 간 즉시 통신 채널 초기화
     try {
-      localBroadcastChannel = new BroadcastChannel(`krx_local_${CLASS_ROOM_ID}`);
+      localBroadcastChannel = new BroadcastChannel(`krx_local_${MQTT_TOPIC_ROOM}`);
       localBroadcastChannel.onmessage = (event) => {
         if (event.data && event.data.senderId !== CLIENT_UNIQUE_ID) {
           handleIncomingNetworkPayload(event.data);
@@ -971,19 +975,33 @@
     }
 
     function copyClassRoomLink() {
-      const url = window.location.origin + window.location.pathname + `?room=${encodeURIComponent(CLASS_ROOM_ID)}`;
+      // 1반 등 불필요한 파라미터 없이 깔끔한 배포 주소(또는 사용자가 지정한 룸만) 복사
+      const cleanUrl = CLASS_ROOM_ID 
+        ? `${window.location.origin}${window.location.pathname}?room=${encodeURIComponent(CLASS_ROOM_ID)}`
+        : `${window.location.origin}${window.location.pathname}`;
+
+      const onSuccess = () => {
+        showToast('초대 링크 복사 완료 📋', '초대 링크가 클립보드에 복사되었습니다. 학생들에게 공유하세요!', 'success');
+      };
+
       if (navigator.clipboard && navigator.clipboard.writeText) {
-        navigator.clipboard.writeText(url).then(() => {
-          showToast('초대 링크 복사 완료 📋', `[${CLASS_ROOM_ID}] 초대 링크가 복사되었습니다. 학생들에게 공유하세요!`, 'success');
-        }).catch(() => prompt('아래 초대 링크를 복사하세요:', url));
+        navigator.clipboard.writeText(cleanUrl).then(onSuccess).catch(() => prompt('아래 초대 링크를 복사하세요:', cleanUrl));
       } else {
-        prompt('아래 초대 링크를 복사하세요:', url);
+        const temp = document.createElement('input');
+        temp.value = cleanUrl;
+        document.body.appendChild(temp);
+        temp.select();
+        document.execCommand('copy');
+        document.body.removeChild(temp);
+        onSuccess();
       }
     }
 
     function initClassroomNetwork() {
       const roomBadge = document.getElementById('roomCodeBadge');
-      if (roomBadge) roomBadge.textContent = `ROOM: ${CLASS_ROOM_ID}`;
+      if (roomBadge) {
+        roomBadge.textContent = CLASS_ROOM_ID ? `ROOM: ${CLASS_ROOM_ID}` : '초대 링크 복사';
+      }
 
       const activeBroker = BROKER_SERVERS[currentBrokerIndex];
       try {
@@ -1017,7 +1035,7 @@
       const netDot = document.getElementById('netStatusDot');
       const netText = document.getElementById('netStatusText');
       if (netDot) netDot.className = 'w-2 h-2 rounded-full bg-emerald-500 animate-pulse';
-      if (netText) netText.textContent = `실시간 연동됨 (${CLASS_ROOM_ID})`;
+      if (netText) netText.textContent = CLASS_ROOM_ID ? `실시간 연동 (${CLASS_ROOM_ID})` : '실시간 연동 완료';
 
       mqttClient.subscribe(`${MQTT_TOPIC_ROOT}/#`, { qos: 0 });
 
@@ -1027,7 +1045,7 @@
         broadcastNetworkMessage('REQUEST_MARKET_STATE', { from: CLIENT_UNIQUE_ID });
       }
 
-      showToast('교실 통신망 연결 🌐', `[${CLASS_ROOM_ID}] 실시간 모의투자 시장에 접속했습니다.`, 'success');
+      showToast('교실 통신망 연결 🌐', '실시간 모의투자 시장에 접속했습니다.', 'success');
     }
 
     function onMqttConnectFailure(err) {
@@ -2301,6 +2319,9 @@
       rEl.innerHTML = `<i class="fa-solid fa-caret-${isUp ? 'up' : 'down'}"></i> ${sign}${stock.diff.toLocaleString()} (${sign}${stock.rate}%)`;
       rEl.className = `text-xs md:text-sm font-black ${color} num-font flex items-center gap-0.5`;
 
+      // 기준가 및 상하한가 갱신 (크롬북 기준가 짤림 방지)
+      const baseEl = document.getElementById('detailBasePrice');
+      if (baseEl) baseEl.textContent = `기준 ${stock.base.toLocaleString()}`;
       document.getElementById('detailLimitHigh').textContent = `상 ${stock.limitHigh.toLocaleString()}`;
       document.getElementById('detailLimitLow').textContent = `하 ${stock.limitLow.toLocaleString()}`;
 
@@ -2380,7 +2401,8 @@
       const stock = ALL_STOCKS.find(s => s.id === selectedStockId);
       if (!stock) return;
 
-      const pad = { top: 18, bottom: 22, left: 15, right: 70 };
+      // 크롬북 기준가 및 가격 텍스트 짤림 방지를 위한 패딩 최적화
+      const pad = { top: 18, bottom: 20, left: 18, right: 76 };
       const chartW = w - pad.left - pad.right;
       const chartH = h - pad.top - pad.bottom;
 
@@ -2402,6 +2424,7 @@
         ctx.stroke();
       }
 
+      // 기준가 점선 및 스마트 텍스트 클리핑 방지 (상단/하단 경계선 밖으로 안 잘리도록 Y좌표 보정)
       const baseY = getY(stock.base);
       if (baseY >= pad.top && baseY <= pad.top + chartH) {
         ctx.save();
@@ -2413,10 +2436,13 @@
         ctx.lineTo(w - pad.right, baseY);
         ctx.stroke();
 
-        ctx.fillStyle = '#64748b';
-        ctx.font = 'bold 9px Pretendard, sans-serif';
+        ctx.fillStyle = '#475569';
+        ctx.font = 'bold 9.5px Pretendard, sans-serif';
         ctx.textAlign = 'left';
-        ctx.fillText(`기준가 ${stock.base.toLocaleString()}`, pad.left + 2, baseY - 3);
+        
+        // 차트 상단선에 기준가가 닿았을 때 글자 윗부분이 잘리지 않도록 조건부 위치 설정
+        const textY = baseY < (pad.top + 14) ? baseY + 12 : baseY - 4;
+        ctx.fillText(`기준가 ${stock.base.toLocaleString()}원`, pad.left + 4, textY);
         ctx.restore();
       }
 
