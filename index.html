@@ -1372,8 +1372,8 @@
 
     // Supabase 설정: 프로젝트 생성 후 아래 두 값만 입력하면 서버 저장이 활성화됩니다.
     // anon/publishable key만 사용하세요. service_role 키는 절대 브라우저에 넣지 마세요.
-    const SUPABASE_URL = ''; // https://cxkygdwqozmndgiltytj.supabase.co/rest/v1/
-    const SUPABASE_ANON_KEY = ''; // sb_publishable_B7G_GiA4KDVJpx6Xt-ogig_2F4wqzTu 
+    const SUPABASE_URL = ''; // 예: https://abcdefgh.supabase.co
+    const SUPABASE_ANON_KEY = ''; // Supabase Project API Keys의 publishable/anon key
     const SUPABASE_TABLE = 'student_accounts';
     let cloudSaveStatus = '미설정';
     let cloudSaveTimer = null;
@@ -1968,6 +1968,10 @@
             mqttSubscribed = true;
             setMqttStatus('실시간 연결됨', true);
             flushMqttPendingPackets();
+            // 교사가 접속하거나 연결이 복구되면 현재 학급 학생들에게 명단 재전송을 요청합니다.
+            if (isTeacherMode) {
+              setTimeout(() => broadcastMsg('STUDENT_LIST_REQUEST', { requestedAt: Date.now() }), 250);
+            }
             if (!isTeacherMode && student.name) {
               setTimeout(() => {
                 broadcastMsg('STUDENT_JOIN', { student: { ...student }, joinedAt: Date.now() });
@@ -2065,6 +2069,15 @@
     function handleIncomingMessage(packet) {
       if (!packet || packet.senderId === myClientId) return;
       const { type, payload } = packet;
+
+      // 교사가 명단을 요청하면 로그인 중인 학생이 자신의 정보를 다시 전송합니다.
+      if (type === 'STUDENT_LIST_REQUEST' && !isTeacherMode && student.name && student.id && !student.id.startsWith('teacher_')) {
+        setTimeout(() => {
+          broadcastMsg('STUDENT_JOIN', { student: { ...student }, joinedAt: Date.now(), responseToListRequest: true });
+          broadcastMsg('STUDENT_UPDATE', { student: { ...student } });
+        }, Math.floor(Math.random() * 1200));
+        return;
+      }
 
       if (type === 'MARKET_ALERT' && payload?.kind === 'CB') {
         if (!isTeacherMode) {
