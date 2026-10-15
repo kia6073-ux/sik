@@ -57,7 +57,7 @@
       <i class="fa-solid fa-users text-emerald-600"></i>
       <span class="hidden sm:inline">참여 학생:</span>
       <span id="headerLiveCount" class="font-mono text-emerald-950 font-black">0</span><span>명</span>
-      <span data-mqtt-status class="text-[10px] font-black text-amber-600 ml-1">실시간 연결 중…</span>
+      <span data-mqtt-status class="text-[10px] font-black text-amber-600 ml-1">실시간 연결 중…</span><span data-cloud-save-status class="text-[10px] font-bold text-slate-400 ml-1">저장 설정 필요</span>
       <span class="w-2 h-2 rounded-full bg-emerald-500 animate-ping"></span>
     </div>
 
@@ -1105,6 +1105,8 @@
     let SEED_MONEY = 10000000;
 
     // 코스피 모의 지수: 교사 화면이 마스터가 되어 일정 주기로 변동합니다.
+    const STOCK_BY_ID = new Map(ALL_STOCKS.map(stock => [stock.id, stock]));
+
     const KOSPI_INITIAL = 6853.89;
     let kospiValue = KOSPI_INITIAL;
     let kospiBase = KOSPI_INITIAL;
@@ -1367,6 +1369,15 @@
       'wss://broker.emqx.io:8084/mqtt',
       'wss://broker.hivemq.com:8884/mqtt'
     ];
+
+    // Supabase 설정: 프로젝트 생성 후 아래 두 값만 입력하면 서버 저장이 활성화됩니다.
+    // anon/publishable key만 사용하세요. service_role 키는 절대 브라우저에 넣지 마세요.
+    const SUPABASE_URL = ''; // https://cxkygdwqozmndgiltytj.supabase.co/rest/v1/
+    const SUPABASE_ANON_KEY = ''; // sb_publishable_B7G_GiA4KDVJpx6Xt-ogig_2F4wqzTu 
+    const SUPABASE_TABLE = 'student_accounts';
+    let cloudSaveStatus = '미설정';
+    let cloudSaveTimer = null;
+    let cloudSaveQueue = Promise.resolve();
     let pendingStudentPresence = false;
 
     window.onload = function() {
@@ -1800,7 +1811,7 @@
           if (curStock) chartHistoryOffset = Math.min(curStock.history.length - 10, chartHistoryOffset + 1);
         }
 
-        selectStock(selectedStockId);
+        selectStock(selectedStockId, false);
         updateAssets();
 
         // 전교생에게 시세 패킷 브로드캐스트
@@ -2076,7 +2087,7 @@
         updateKospiDisplay();
         if (Array.isArray(payload.ticks)) {
           payload.ticks.forEach(t => {
-            const s = ALL_STOCKS.find(st => st.id === t.id);
+            const s = STOCK_BY_ID.get(t.id);
             if (s) {
               s.price = applyKrxPriceLimit(s, t.p);
               s.diff = t.d;
@@ -2086,12 +2097,12 @@
             }
           });
         }
-        selectStock(selectedStockId);
+        selectStock(selectedStockId, false);
         updateAssets();
       } else if (type === 'MARKET_TICKS' && payload?.ticks) {
         // 교사로부터 전송받은 100개 종목의 정확한 틱 가격 반영
         payload.ticks.forEach(t => {
-          const s = ALL_STOCKS.find(st => st.id === t.id);
+          const s = STOCK_BY_ID.get(t.id);
           if (s) {
             s.price = applyKrxPriceLimit(s, t.p);
             s.diff = t.d;
@@ -2106,7 +2117,7 @@
           if (curStock) chartHistoryOffset = Math.min(curStock.history.length - 10, chartHistoryOffset + 1);
         }
 
-        selectStock(selectedStockId);
+        selectStock(selectedStockId, false);
         updateAssets();
       } else if (type === 'ORDER_FLOW_IMPACT' && payload?.stock) {
         // 교사 마스터가 계산한 수급 효과를 모든 학생 화면에 동일하게 적용합니다.
@@ -2238,8 +2249,8 @@
               marketConfigMinutes,
               seedMoney: SEED_MONEY,
               kospi: { value: kospiValue, diff: kospiDiff, rate: kospiRate, secondsToNext: kospiSecondsToNext },
-              newsHistory: allNewsHistory.slice(0, 30),
-              stocks: ALL_STOCKS.map(s => ({ id: s.id, price: s.price, diff: s.diff, rate: s.rate, history: s.history }))
+              newsHistory: allNewsHistory.slice(0, 15),
+              stocks: ALL_STOCKS.map(s => ({ id: s.id, price: s.price, diff: s.diff, rate: s.rate, history: s.history.slice(-12) }))
             });
           }, 100);
         }
@@ -2251,8 +2262,8 @@
           marketConfigMinutes,
           seedMoney: SEED_MONEY,
           kospi: { value: kospiValue, diff: kospiDiff, rate: kospiRate, secondsToNext: kospiSecondsToNext },
-          newsHistory: allNewsHistory.slice(0, 30),
-          stocks: ALL_STOCKS.map(s => ({ id: s.id, price: s.price, diff: s.diff, rate: s.rate, history: s.history }))
+          newsHistory: allNewsHistory.slice(0, 15),
+          stocks: ALL_STOCKS.map(s => ({ id: s.id, price: s.price, diff: s.diff, rate: s.rate, history: s.history.slice(-12) }))
         });
       } else if (type === 'FULL_ROOM_SYNC' && !isTeacherMode && payload) {
         marketState = payload.marketState;
@@ -2270,7 +2281,7 @@
 
         if (Array.isArray(payload.stocks)) {
           payload.stocks.forEach(snap => {
-            const s = ALL_STOCKS.find(st => st.id === snap.id);
+            const s = STOCK_BY_ID.get(snap.id);
             if (s) {
               s.price = applyKrxPriceLimit(s, snap.price);
               s.diff = snap.diff;
@@ -2289,6 +2300,7 @@
         if (!isTeacherMode && student.name) {
           student.cash += payload.amount;
           updateAssets();
+          saveStudentState();
           calculateOrderTotal();
           renderPortfolio();
         }
@@ -2581,6 +2593,7 @@
       calculateOrderTotal();
       renderPortfolio();
 
+      saveStudentState();
       const trade = { stockId: s.id, side: type, qty, price: s.price, value: cost, tradeId: `trade_${Date.now()}_${Math.random().toString(36).slice(2,7)}` };
       if (!isTeacherMode && student.name) {
         broadcastMsg('STUDENT_UPDATE', { student, trade });
@@ -2651,7 +2664,7 @@
       }).join('');
     }
 
-    function selectStock(id) {
+    function selectStock(id, refreshList = true) {
       selectedStockId = id;
       const s = ALL_STOCKS.find(st => st.id === id);
       if (!s) return;
@@ -2671,13 +2684,15 @@
       rEl.textContent = `${isUp ? '+' : ''}${s.diff.toLocaleString()} (${isUp ? '+' : ''}${s.rate}%)`;
       rEl.className = `text-xs md:text-sm font-black num-font ${isUp ? 'text-rose-600' : 'text-blue-600'}`;
 
-      renderStockList();
-      calculateOrderTotal();
-
-      if (currentCenterTab === 'chart') {
-        drawChart();
+      if (refreshList) {
+        renderStockList();
+        calculateOrderTotal();
+        if (currentCenterTab === 'chart') drawChart();
+        else renderStockNewsList();
       } else {
-        renderStockNewsList();
+        // 고빈도 시세 틱에서는 상세 가격만 갱신하고 종목 목록·차트·뉴스 DOM은 재생성하지 않습니다.
+        const qtyInput = document.getElementById('orderQtyInput');
+        if (qtyInput) calculateOrderTotal();
       }
     }
 
@@ -3242,7 +3257,110 @@
       }
     }
 
-    function handleLoginSubmit(e) {
+    // 학생 계정 저장: 로컬 저장은 오프라인 안전망, Supabase는 여러 기기 간 공유 저장소입니다.
+    function getStudentSaveKey(classNum, studentNum, name) {
+      return `krx_student_state_v1_${classNum}_${studentNum}_${encodeURIComponent(String(name || '').trim())}`;
+    }
+
+    function getStudentAccountKey(classNum, studentNum, name) {
+      return `${Number(classNum)}:${Number(studentNum)}:${String(name || '').trim().normalize('NFKC')}`;
+    }
+
+    function supabaseReady() {
+      return /^https:\/\/.+\.supabase\.co(m)?$/.test(SUPABASE_URL) && !!SUPABASE_ANON_KEY;
+    }
+
+    function setCloudSaveStatus(text) {
+      cloudSaveStatus = text;
+      document.querySelectorAll('[data-cloud-save-status]').forEach(el => { el.textContent = text; });
+    }
+
+    function accountStateSnapshot() {
+      return { cash: Number(student.cash) || 0, portfolio: student.portfolio || {},
+        tradeCount: Number(student.tradeCount) || 0, totalAsset: Number(student.totalAsset) || 0,
+        profitRate: Number(student.profitRate) || 0, savedAt: new Date().toISOString() };
+    }
+
+    function applyAccountState(saved) {
+      if (!saved || typeof saved.cash !== 'number' || !saved.portfolio || typeof saved.portfolio !== 'object') return false;
+      student.cash = saved.cash;
+      student.portfolio = saved.portfolio;
+      student.tradeCount = Number(saved.tradeCount) || 0;
+      student.totalAsset = Number(saved.totalAsset) || saved.cash;
+      student.profitRate = Number(saved.profitRate) || 0;
+      return true;
+    }
+
+    function loadSavedStudentState(classNum, studentNum, name) {
+      try {
+        const raw = localStorage.getItem(getStudentSaveKey(classNum, studentNum, name));
+        return raw ? applyAccountState(JSON.parse(raw)) : false;
+      } catch (err) { console.warn('로컬 계정 복구 실패:', err); return false; }
+    }
+
+    async function loadStudentStateFromCloud(classNum, studentNum, name) {
+      if (!supabaseReady()) { setCloudSaveStatus('로컬 저장'); return false; }
+      const accountKey = getStudentAccountKey(classNum, studentNum, name);
+      const url = `${SUPABASE_URL}/rest/v1/${SUPABASE_TABLE}?account_key=eq.${encodeURIComponent(accountKey)}&select=account_state,updated_at&limit=1`;
+      try {
+        const response = await fetch(url, { headers: { apikey: SUPABASE_ANON_KEY, Authorization: `Bearer ${SUPABASE_ANON_KEY}` } });
+        if (!response.ok) throw new Error(`HTTP ${response.status}`);
+        const rows = await response.json();
+        if (rows.length && applyAccountState(rows[0].account_state)) {
+          localStorage.setItem(getStudentSaveKey(classNum, studentNum, name), JSON.stringify(rows[0].account_state));
+          setCloudSaveStatus('서버 계정 복구 완료');
+          return true;
+        }
+        setCloudSaveStatus('새 계정');
+        return false;
+      } catch (err) {
+        console.warn('Supabase 계정 복구 실패:', err);
+        setCloudSaveStatus('서버 연결 실패 · 로컬 사용');
+        return false;
+      }
+    }
+
+    async function saveStudentStateToCloud() {
+      if (!supabaseReady() || isTeacherMode || !student.name || !student.id) return;
+      const row = {
+        account_key: getStudentAccountKey(student.classNum, student.studentNum, student.name),
+        class_num: Number(student.classNum), student_num: Number(student.studentNum),
+        student_name: String(student.name).trim(), account_state: accountStateSnapshot(),
+        updated_at: new Date().toISOString()
+      };
+      try {
+        const response = await fetch(`${SUPABASE_URL}/rest/v1/${SUPABASE_TABLE}?on_conflict=account_key`, {
+          method: 'POST',
+          headers: { apikey: SUPABASE_ANON_KEY, Authorization: `Bearer ${SUPABASE_ANON_KEY}`,
+            'Content-Type': 'application/json', Prefer: 'resolution=merge-duplicates,return=minimal' },
+          body: JSON.stringify(row)
+        });
+        if (!response.ok) throw new Error(`HTTP ${response.status}`);
+        setCloudSaveStatus('서버 저장 완료');
+      } catch (err) {
+        console.warn('Supabase 계정 저장 실패:', err);
+        setCloudSaveStatus('서버 저장 실패 · 로컬 보관');
+      }
+    }
+
+    function saveStudentState() {
+      if (isTeacherMode || !student.name || !student.id) return;
+      const snapshot = accountStateSnapshot();
+      try { localStorage.setItem(getStudentSaveKey(student.classNum, student.studentNum, student.name), JSON.stringify(snapshot)); }
+      catch (err) { console.warn('로컬 계정 저장 실패:', err); }
+      // 직렬화해 저장 요청 순서가 바뀌면서 예전 상태가 최신 상태를 덮지 않도록 합니다.
+      clearTimeout(cloudSaveTimer);
+      cloudSaveTimer = setTimeout(() => {
+        cloudSaveQueue = cloudSaveQueue.then(() => saveStudentStateToCloud()).catch(() => {});
+      }, 350);
+    }
+
+    window.addEventListener('pagehide', saveStudentState);
+    document.addEventListener('visibilitychange', () => {
+      if (document.visibilityState === 'hidden') saveStudentState();
+    });
+
+    async function handleLoginSubmit(e) {
       e.preventDefault();
       const c = parseInt(document.getElementById('inputClass').value, 10) || 1;
       const n = parseInt(document.getElementById('inputNumber').value, 10) || 1;
@@ -3261,17 +3379,23 @@
       student.classNum = c;
       student.studentNum = n;
       student.name = name;
-      switchClassRoom(`${c}반`);
+      // 다른 학생으로 로그인하는 경우 이전 계정의 잔액/보유 종목을 먼저 초기화한 뒤 저장본을 불러옵니다.
       student.cash = SEED_MONEY;
       student.totalAsset = SEED_MONEY;
       student.profitRate = 0;
       student.portfolio = {};
       student.tradeCount = 0;
+      let restored = loadSavedStudentState(c, n, name);
+      // 서버 저장본이 있으면 로컬 사본보다 우선합니다. 서버 장애 시 로컬 저장본을 사용합니다.
+      const cloudRestored = await loadStudentStateFromCloud(c, n, name);
+      restored = cloudRestored || restored;
+      switchClassRoom(`${c}반`);
 
       document.getElementById('headerStudentName').textContent = name;
       document.getElementById('headerStudentClass').textContent = `3학년 ${c}반 ${n}번`;
       document.getElementById('loginModal').classList.add('hidden');
       updateAssets();
+      saveStudentState();
 
       const idx = classroomStudents.findIndex(s => s.id === newId);
       if (idx >= 0) classroomStudents[idx] = { ...student };
