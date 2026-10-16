@@ -57,7 +57,7 @@
       <i class="fa-solid fa-users text-emerald-600"></i>
       <span class="hidden sm:inline">참여 학생:</span>
       <span id="headerLiveCount" class="font-mono text-emerald-950 font-black">0</span><span>명</span>
-      <span data-mqtt-status class="text-[10px] font-black text-amber-600 ml-1">실시간 연결 중…</span><span data-cloud-save-status class="text-[10px] font-bold text-slate-400 ml-1">저장 설정 필요</span>
+      <span data-mqtt-status class="text-[10px] font-black text-amber-600 ml-1">실시간 연결 중…</span>
       <span class="w-2 h-2 rounded-full bg-emerald-500 animate-ping"></span>
     </div>
 
@@ -1365,20 +1365,15 @@
     let mqttRetryTimer = null;
     let mqttPendingPackets = [];
     let currentMqttBrokerIndex = 0;
+    // 우선 HiveMQ에 연결하고, 반복 실패 시 EMQX로 전환합니다.
     const MQTT_BROKERS = [
-      'wss://broker.emqx.io:8084/mqtt',
-      'wss://broker.hivemq.com:8884/mqtt'
+      'wss://broker.hivemq.com:8884/mqtt',
+      'wss://broker.emqx.io:8084/mqtt'
     ];
 
-    // Supabase 설정: 프로젝트 생성 후 아래 두 값만 입력하면 서버 저장이 활성화됩니다.
-    // anon/publishable key만 사용하세요. service_role 키는 절대 브라우저에 넣지 마세요.
-    const SUPABASE_URL = ''; // sb_publishable_B7G_GiA4KDVJpx6Xt-ogig_2F4wqzTu
-    const SUPABASE_ANON_KEY = ''; // https://cxkygdwqozmndgiltytj.supabase.co/rest/v1/
-    const SUPABASE_TABLE = 'student_accounts';
-    let cloudSaveStatus = '미설정';
-    let cloudSaveTimer = null;
-    let cloudSaveQueue = Promise.resolve();
     let pendingStudentPresence = false;
+    let mqttRetryAttempt = 0;
+    let mqttLastConnectAt = 0;
 
     window.onload = function() {
       const p = new URLSearchParams(window.location.search);
@@ -1896,9 +1891,31 @@
       }
     }
 
+    function getMqttTopicForClass(classValue) {
+      // 모든 반이 동일한 규칙을 사용하되, 반별 메시지 채널은 분리합니다.
+      const match = String(classValue || '1반').match(/\d+/);
+      const classNum = match ? Math.max(1, Math.min(20, parseInt(match[0], 10))) : 1;
+      return `krx_class_sync_${classNum}`;
+    }
+
     function getMqttTopic() {
-      // 반별로 완전히 분리된 채널. 한글은 topic에 직접 넣지 않고 UTF-8 인코딩하여 사용.
-      return `krx_class_sync_${encodeURIComponent(String(selectedClass || '1반'))}`;
+      return getMqttTopicForClass(selectedClass);
+    }
+
+    function getMqttTopicsForClient() {
+      // 교사는 1~20반 채널을 모두 구독하고, 학생은 본인 반 채널만 구독합니다.
+      if (isTeacherMode) return Array.from({ length: 20 }, (_, i) => getMqttTopicForClass(`${i + 1}반`));
+      return [getMqttTopic()];
+    }
+
+    function publishMqttPacket(packet, options = {}) {
+      if (!mqttClient || !mqttClient.connected || !mqttSubscribed) return false;
+      const qos = options.qos ?? (packet.type === 'MARKET_TICKS' ? 0 : 1);
+      const topics = isTeacherMode ? getMqttTopicsForClient() : [getMqttTopic()];
+      topics.forEach(topic => {
+        try { mqttClient.publish(topic, JSON.stringify(packet), { qos, retain: false }); } catch (e) {}
+      });
+      return true;
     }
 
     function setMqttStatus(text, ok = false) {
@@ -1916,21 +1933,25 @@
       if (!mqttPendingPackets.length) return;
       const queue = mqttPendingPackets.splice(0);
       queue.forEach(packet => {
-        try {
-          const qos = packet.type === 'MARKET_TICKS' ? 0 : 1;
-          mqttClient.publish(getMqttTopic(), JSON.stringify(packet), { qos, retain: false });
-        } catch (e) {
-          mqttPendingPackets.unshift(packet);
-        }
+        const sent = publishMqttPacket(packet);
+        if (!sent) mqttPendingPackets.unshift(packet);
       });
     }
 
     function scheduleMqttRetry() {
-      clearTimeout(mqttRetryTimer);
+      if (mqttRetryTimer) return;
+      mqttRetryAttempt = Math.min(mqttRetryAttempt + 1, 8);
+      // 재접속이 한꺼번에 몰리는 현상을 줄이기 위해 지수형 지연 + 무작위 지연 적용
+      const baseDelay = Math.min(2000 * (2 ** (mqttRetryAttempt - 1)), 30000);
+      const jitter = Math.floor(Math.random() * 1200);
+      const delay = baseDelay + jitter;
+      if (mqttRetryAttempt % 3 === 0) {
+        currentMqttBrokerIndex = (currentMqttBrokerIndex + 1) % MQTT_BROKERS.length;
+      }
       mqttRetryTimer = setTimeout(() => {
         mqttRetryTimer = null;
         initMqtt();
-      }, 3000);
+      }, delay);
     }
 
     function initMqtt() {
@@ -1940,7 +1961,8 @@
       setMqttStatus('실시간 연결 중…', false);
 
       try {
-        const topic = getMqttTopic();
+        const topics = getMqttTopicsForClient();
+        const topicSet = new Set(topics);
         const brokerUrl = MQTT_BROKERS[currentMqttBrokerIndex];
         if (!window.mqtt || typeof window.mqtt.connect !== 'function') {
           throw new Error('MQTT 라이브러리 로드 실패');
@@ -1958,20 +1980,19 @@
 
         mqttClient.on('connect', () => {
           mqttConnecting = false;
-          mqttClient.subscribe(topic, { qos: 1 }, (err) => {
+          mqttRetryAttempt = 0;
+          mqttLastConnectAt = Date.now();
+          mqttClient.subscribe(topics, { qos: 1 }, (err) => {
             if (err) {
               mqttSubscribed = false;
-              setMqttStatus('채널 구독 실패', false);
+              setMqttStatus('채널 구독 실패 · 재연결 중…', false);
+              try { mqttClient.end(true); } catch (e) {}
               scheduleMqttRetry();
               return;
             }
             mqttSubscribed = true;
             setMqttStatus('실시간 연결됨', true);
             flushMqttPendingPackets();
-            // 교사가 접속하거나 연결이 복구되면 현재 학급 학생들에게 명단 재전송을 요청합니다.
-            if (isTeacherMode) {
-              setTimeout(() => broadcastMsg('STUDENT_LIST_REQUEST', { requestedAt: Date.now() }), 250);
-            }
             if (!isTeacherMode && student.name) {
               setTimeout(() => {
                 broadcastMsg('STUDENT_JOIN', { student: { ...student }, joinedAt: Date.now() });
@@ -1984,7 +2005,7 @@
         });
 
         mqttClient.on('message', (receivedTopic, message) => {
-          if (receivedTopic !== topic) return;
+          if (!topicSet.has(receivedTopic)) return;
           try { handleIncomingMessage(JSON.parse(message.toString())); } catch (e) {}
         });
 
@@ -1993,7 +2014,6 @@
           mqttSubscribed = false;
           const msg = err && err.message ? err.message : '연결 오류';
           setMqttStatus('실시간 오류 · 재연결 중…', false);
-          currentMqttBrokerIndex = (currentMqttBrokerIndex + 1) % MQTT_BROKERS.length;
           scheduleMqttRetry();
         });
 
@@ -2001,7 +2021,6 @@
           mqttConnecting = false;
           mqttSubscribed = false;
           setMqttStatus('실시간 연결 끊김 · 재연결 중…', false);
-          currentMqttBrokerIndex = (currentMqttBrokerIndex + 1) % MQTT_BROKERS.length;
           scheduleMqttRetry();
         });
       } catch (e) {
@@ -2016,13 +2035,17 @@
     function broadcastMsg(type, payload) {
       const packet = { type, payload, senderId: myClientId, timestamp: Date.now() };
       try { if (channel) channel.postMessage(packet); } catch (e) {}
-      try { localStorage.setItem('krx_sync_' + selectedClass, JSON.stringify(packet)); } catch (e) {}
+      // 시세 틱은 고빈도로 발생하므로 동기식 localStorage 쓰기를 생략해 메인 스레드 정체를 줄입니다.
+      // 거래·입장·시장 상태 등 중요 이벤트는 기존처럼 storage 이벤트로도 전달합니다.
+      if (type !== 'MARKET_TICKS') {
+        try { localStorage.setItem('krx_sync_' + selectedClass, JSON.stringify(packet)); } catch (e) {}
+      }
       if (mqttClient && mqttClient.connected && mqttSubscribed) {
         try {
           // 고빈도 시세 틱은 최신 값이 중요하므로 QoS 0으로 지연을 줄이고,
           // 주문/입장/시장상태 등 중요한 이벤트는 QoS 1로 전달합니다.
           const qos = type === 'MARKET_TICKS' ? 0 : 1;
-          mqttClient.publish(getMqttTopic(), JSON.stringify(packet), { qos, retain: false });
+          publishMqttPacket(packet, { qos });
           return;
         } catch (e) {}
       }
@@ -2066,18 +2089,26 @@
       } catch (e) {}
     }
 
+    // 고빈도 시세 메시지가 짧은 시간에 연속 도착해도 화면은 프레임당 한 번만 갱신합니다.
+    let marketUiRefreshQueued = false;
+    function scheduleMarketUiRefresh() {
+      if (marketUiRefreshQueued) return;
+      marketUiRefreshQueued = true;
+      const run = () => {
+        marketUiRefreshQueued = false;
+        selectStock(selectedStockId, false);
+        updateAssets();
+      };
+      if (typeof window.requestAnimationFrame === 'function') {
+        window.requestAnimationFrame(run);
+      } else {
+        setTimeout(run, 80);
+      }
+    }
+
     function handleIncomingMessage(packet) {
       if (!packet || packet.senderId === myClientId) return;
       const { type, payload } = packet;
-
-      // 교사가 명단을 요청하면 로그인 중인 학생이 자신의 정보를 다시 전송합니다.
-      if (type === 'STUDENT_LIST_REQUEST' && !isTeacherMode && student.name && student.id && !student.id.startsWith('teacher_')) {
-        setTimeout(() => {
-          broadcastMsg('STUDENT_JOIN', { student: { ...student }, joinedAt: Date.now(), responseToListRequest: true });
-          broadcastMsg('STUDENT_UPDATE', { student: { ...student } });
-        }, Math.floor(Math.random() * 1200));
-        return;
-      }
 
       if (type === 'MARKET_ALERT' && payload?.kind === 'CB') {
         if (!isTeacherMode) {
@@ -2110,8 +2141,7 @@
             }
           });
         }
-        selectStock(selectedStockId, false);
-        updateAssets();
+        scheduleMarketUiRefresh();
       } else if (type === 'MARKET_TICKS' && payload?.ticks) {
         // 교사로부터 전송받은 100개 종목의 정확한 틱 가격 반영
         payload.ticks.forEach(t => {
@@ -2130,8 +2160,7 @@
           if (curStock) chartHistoryOffset = Math.min(curStock.history.length - 10, chartHistoryOffset + 1);
         }
 
-        selectStock(selectedStockId, false);
-        updateAssets();
+        scheduleMarketUiRefresh();
       } else if (type === 'ORDER_FLOW_IMPACT' && payload?.stock) {
         // 교사 마스터가 계산한 수급 효과를 모든 학생 화면에 동일하게 적용합니다.
         const s = ALL_STOCKS.find(st => st.id === payload.stock.id);
@@ -3204,7 +3233,18 @@
     function toggleTeacherModal(show) {
       document.getElementById('teacherModal').classList.toggle('hidden', !show);
       if (show) {
+        const wasTeacherMode = isTeacherMode;
         isTeacherMode = true;
+        // 학생 화면에서 교사 관제로 전환한 경우 전체 반 채널을 다시 구독합니다.
+        if (!wasTeacherMode && (mqttClient || mqttConnecting)) {
+          try { if (mqttClient) mqttClient.end(true); } catch (e) {}
+          mqttClient = null;
+          mqttConnecting = false;
+          mqttSubscribed = false;
+          clearTimeout(mqttRetryTimer);
+          mqttRetryTimer = null;
+          initMqtt();
+        }
         document.getElementById('roleBadge').textContent = '교사 관제자';
         document.getElementById('roleBadge').className = 'px-1.5 py-0.5 rounded text-[11px] font-extrabold bg-rose-50 text-rose-700 border border-rose-200';
         const qrBtn = document.getElementById('headerQRBtn');
@@ -3246,6 +3286,7 @@
         if (mqttClient && mqttClient.connected) mqttClient.end(true);
       } catch (e) {}
       mqttClient = null;
+      mqttConnecting = false;
       mqttSubscribed = false;
       mqttPendingPackets = [];
       clearTimeout(mqttRetryTimer);
@@ -3279,15 +3320,6 @@
       return `${Number(classNum)}:${Number(studentNum)}:${String(name || '').trim().normalize('NFKC')}`;
     }
 
-    function supabaseReady() {
-      return /^https:\/\/.+\.supabase\.co(m)?$/.test(SUPABASE_URL) && !!SUPABASE_ANON_KEY;
-    }
-
-    function setCloudSaveStatus(text) {
-      cloudSaveStatus = text;
-      document.querySelectorAll('[data-cloud-save-status]').forEach(el => { el.textContent = text; });
-    }
-
     function accountStateSnapshot() {
       return { cash: Number(student.cash) || 0, portfolio: student.portfolio || {},
         tradeCount: Number(student.tradeCount) || 0, totalAsset: Number(student.totalAsset) || 0,
@@ -3311,61 +3343,14 @@
       } catch (err) { console.warn('로컬 계정 복구 실패:', err); return false; }
     }
 
-    async function loadStudentStateFromCloud(classNum, studentNum, name) {
-      if (!supabaseReady()) { setCloudSaveStatus('로컬 저장'); return false; }
-      const accountKey = getStudentAccountKey(classNum, studentNum, name);
-      const url = `${SUPABASE_URL}/rest/v1/${SUPABASE_TABLE}?account_key=eq.${encodeURIComponent(accountKey)}&select=account_state,updated_at&limit=1`;
-      try {
-        const response = await fetch(url, { headers: { apikey: SUPABASE_ANON_KEY, Authorization: `Bearer ${SUPABASE_ANON_KEY}` } });
-        if (!response.ok) throw new Error(`HTTP ${response.status}`);
-        const rows = await response.json();
-        if (rows.length && applyAccountState(rows[0].account_state)) {
-          localStorage.setItem(getStudentSaveKey(classNum, studentNum, name), JSON.stringify(rows[0].account_state));
-          setCloudSaveStatus('서버 계정 복구 완료');
-          return true;
-        }
-        setCloudSaveStatus('새 계정');
-        return false;
-      } catch (err) {
-        console.warn('Supabase 계정 복구 실패:', err);
-        setCloudSaveStatus('서버 연결 실패 · 로컬 사용');
-        return false;
-      }
-    }
-
-    async function saveStudentStateToCloud() {
-      if (!supabaseReady() || isTeacherMode || !student.name || !student.id) return;
-      const row = {
-        account_key: getStudentAccountKey(student.classNum, student.studentNum, student.name),
-        class_num: Number(student.classNum), student_num: Number(student.studentNum),
-        student_name: String(student.name).trim(), account_state: accountStateSnapshot(),
-        updated_at: new Date().toISOString()
-      };
-      try {
-        const response = await fetch(`${SUPABASE_URL}/rest/v1/${SUPABASE_TABLE}?on_conflict=account_key`, {
-          method: 'POST',
-          headers: { apikey: SUPABASE_ANON_KEY, Authorization: `Bearer ${SUPABASE_ANON_KEY}`,
-            'Content-Type': 'application/json', Prefer: 'resolution=merge-duplicates,return=minimal' },
-          body: JSON.stringify(row)
-        });
-        if (!response.ok) throw new Error(`HTTP ${response.status}`);
-        setCloudSaveStatus('서버 저장 완료');
-      } catch (err) {
-        console.warn('Supabase 계정 저장 실패:', err);
-        setCloudSaveStatus('서버 저장 실패 · 로컬 보관');
-      }
-    }
-
+    // 현재는 Supabase를 사용하지 않고, 계좌를 해당 브라우저의 localStorage에 저장합니다.
+    // 다른 기기/브라우저 간 계좌 영구 동기화는 이 구성만으로 제공되지 않습니다.
     function saveStudentState() {
       if (isTeacherMode || !student.name || !student.id) return;
       const snapshot = accountStateSnapshot();
-      try { localStorage.setItem(getStudentSaveKey(student.classNum, student.studentNum, student.name), JSON.stringify(snapshot)); }
-      catch (err) { console.warn('로컬 계정 저장 실패:', err); }
-      // 직렬화해 저장 요청 순서가 바뀌면서 예전 상태가 최신 상태를 덮지 않도록 합니다.
-      clearTimeout(cloudSaveTimer);
-      cloudSaveTimer = setTimeout(() => {
-        cloudSaveQueue = cloudSaveQueue.then(() => saveStudentStateToCloud()).catch(() => {});
-      }, 350);
+      try {
+        localStorage.setItem(getStudentSaveKey(student.classNum, student.studentNum, student.name), JSON.stringify(snapshot));
+      } catch (err) { console.warn('로컬 계정 저장 실패:', err); }
     }
 
     window.addEventListener('pagehide', saveStudentState);
@@ -3398,10 +3383,7 @@
       student.profitRate = 0;
       student.portfolio = {};
       student.tradeCount = 0;
-      let restored = loadSavedStudentState(c, n, name);
-      // 서버 저장본이 있으면 로컬 사본보다 우선합니다. 서버 장애 시 로컬 저장본을 사용합니다.
-      const cloudRestored = await loadStudentStateFromCloud(c, n, name);
-      restored = cloudRestored || restored;
+      const restored = loadSavedStudentState(c, n, name);
       switchClassRoom(`${c}반`);
 
       document.getElementById('headerStudentName').textContent = name;
@@ -3415,7 +3397,7 @@
       else classroomStudents.push({ ...student });
       updateTeacherRankingTable();
 
-      // MQTT 연결 전 로그인해도 정보가 사라지지 않도록 대기 상태를 기록
+      // MQTT 연결 전 로그인해도 입장 정보가 재연결 후 전송되도록 대기 상태를 기록
       pendingStudentPresence = true;
       broadcastMsg('STUDENT_JOIN', { student: { ...student }, joinedAt: Date.now() });
       broadcastMsg('STUDENT_UPDATE', { student: { ...student } });
