@@ -36,7 +36,7 @@
   <!-- 상단 글로벌 헤더 -->
   <header class="h-12 bg-white border-b border-slate-200 px-3 flex items-center justify-between flex-shrink-0 z-20 shadow-xs">
     <div class="flex items-center gap-2">
-      <div onclick="handleSecretTeacherTrigger()" title="실전 모의주식 (교사는 5회 클릭 또는 Ctrl+1)" class="w-8 h-8 rounded-lg bg-gradient-to-tr from-rose-500 to-indigo-600 flex items-center justify-center text-white shadow-xs text-sm font-black cursor-pointer select-none">
+      <div onclick="handleSecretTeacherTrigger()" title="실전 모의주식 (교사는 5회 클릭 또는 Ctrl+3)" class="w-8 h-8 rounded-lg bg-gradient-to-tr from-rose-500 to-indigo-600 flex items-center justify-center text-white shadow-xs text-sm font-black cursor-pointer select-none">
         <i class="fa-solid fa-chart-line"></i>
       </div>
       <div>
@@ -365,7 +365,7 @@
           <div>
             <div class="flex items-center gap-2">
               <h3 class="text-base font-black text-slate-900">교사용 실시간 관제 센터 (마스터)</h3>
-              <span class="px-2 py-0.5 rounded text-[11px] font-black bg-rose-50 text-rose-700 border border-rose-200">단축키: Ctrl + 1</span>
+              <span class="px-2 py-0.5 rounded text-[11px] font-black bg-rose-50 text-rose-700 border border-rose-200">단축키: Ctrl + 3</span>
             </div>
             <p class="text-xs text-slate-500 font-medium">1~60분 시간 설정, 반별 QR코드 입장, 거시경제 쇼크 20종, 종목별 호재·악재 제어</p>
           </div>
@@ -393,6 +393,9 @@
             </button>
             <button onclick="teacherGiveSubsidy(500000)" class="px-3 py-1.5 bg-indigo-600 hover:bg-indigo-700 text-white rounded-xl text-xs font-black shadow-xs transition flex items-center gap-1.5 cursor-pointer">
               <i class="fa-solid fa-hand-holding-dollar"></i> <span>전원 지원금 (+50만)</span>
+            </button>
+            <button type="button" onclick="openLoadTestModal()" class="px-3 py-1.5 bg-amber-500 hover:bg-amber-600 text-white rounded-xl text-xs font-black shadow-xs transition flex items-center gap-1.5 cursor-pointer">
+              <i class="fa-solid fa-gauge-high"></i> <span>부하 테스트</span>
             </button>
           </div>
           <div class="text-xs font-bold text-slate-500">
@@ -1387,6 +1390,9 @@
       qrSelectedClass = selectedClass;
       const inp = document.getElementById('inputClass');
       if (inp) inp.value = safeClass;
+      // Supabase 없이 이 기기의 localStorage에서 시장 상태와 교사 명단을 복원합니다.
+      restoreLocalMarketState();
+      restoreLocalTeacherRoster();
       if (p.get('teacher') === '1') {
         enterTeacherDirectly();
       }
@@ -1403,6 +1409,12 @@
       initTimers();
       initKeyboardShortcuts();
       updateTeacherRankingTable();
+
+      // 같은 기기에서 QR을 다시 스캔해 재접속하면 마지막 학생 계정을 자동 복원합니다.
+      // 교사 모드에서는 학생 자동 로그인을 실행하지 않습니다.
+      if (p.get('teacher') !== '1') {
+        setTimeout(() => tryAutoRestoreStudentLogin(), 0);
+      }
     };
 
     function switchCenterTab(tab) {
@@ -1811,7 +1823,7 @@
 
         // 전교생에게 시세 패킷 브로드캐스트
         broadcastMsg('MARKET_TICKS', { ticks: updates });
-      }, 1800);
+      }, 2500);
 
       // 2. 코스피 변동: 10~20초 사이의 랜덤한 간격으로 지수와 전체 종목을 함께 움직임
       const scheduleNextKospiTick = () => {
@@ -1860,6 +1872,96 @@
         }
       }, 1000);
     }
+
+    // Supabase 대체용 로컬 영속 저장: 현재 브라우저/기기에서만 복원됩니다.
+    // 시장 틱은 디바운스하여 저장 빈도를 제한하고, 마지막 상태는 pagehide 때 즉시 저장합니다.
+    const LOCAL_MARKET_STATE_KEY = 'krx_local_market_state_v2';
+    const LOCAL_TEACHER_ROSTER_KEY = 'krx_local_teacher_roster_v2';
+    let localStateSaveTimer = null;
+
+    function makeLocalMarketSnapshot() {
+      return {
+        version: 2,
+        savedAt: Date.now(),
+        marketState,
+        marketSeconds,
+        marketConfigMinutes,
+        seedMoney: SEED_MONEY,
+        kospi: { value: kospiValue, diff: kospiDiff, rate: kospiRate, secondsToNext: kospiSecondsToNext },
+        stocks: ALL_STOCKS.map(s => ({ id: s.id, price: s.price, diff: s.diff, rate: s.rate, history: Array.isArray(s.history) ? s.history.slice(-40) : [] })),
+        newsHistory: Array.isArray(allNewsHistory) ? allNewsHistory.slice(0, 20) : []
+      };
+    }
+
+    function restoreLocalMarketState() {
+      try {
+        const raw = localStorage.getItem(LOCAL_MARKET_STATE_KEY);
+        if (!raw) return false;
+        const saved = JSON.parse(raw);
+        if (!saved || saved.version !== 2 || !Array.isArray(saved.stocks)) return false;
+        saved.stocks.forEach(snap => {
+          const stock = STOCK_BY_ID.get(snap.id);
+          if (!stock || !Number.isFinite(Number(snap.price))) return;
+          stock.price = applyKrxPriceLimit(stock, Number(snap.price));
+          stock.diff = Number(snap.diff) || 0;
+          stock.rate = Number(snap.rate) || 0;
+          if (Array.isArray(snap.history) && snap.history.length) stock.history = snap.history.map(Number).filter(Number.isFinite).slice(-40);
+        });
+        if (saved.kospi) {
+          kospiValue = Number(saved.kospi.value) || kospiValue;
+          kospiDiff = Number(saved.kospi.diff) || 0;
+          kospiRate = Number(saved.kospi.rate) || 0;
+          kospiSecondsToNext = Number(saved.kospi.secondsToNext) || 30;
+        }
+        if (['WAITING','ACTIVE','PAUSED','CLOSED'].includes(saved.marketState)) marketState = saved.marketState;
+        if (Number.isFinite(Number(saved.marketSeconds))) marketSeconds = Number(saved.marketSeconds);
+        if (Number.isFinite(Number(saved.marketConfigMinutes))) marketConfigMinutes = Number(saved.marketConfigMinutes);
+        if (Array.isArray(saved.newsHistory)) allNewsHistory = saved.newsHistory.slice(0, 20);
+        return true;
+      } catch (err) { console.warn('로컬 시장 상태 복원 실패:', err); return false; }
+    }
+
+    function saveLocalMarketStateNow() {
+      try { localStorage.setItem(LOCAL_MARKET_STATE_KEY, JSON.stringify(makeLocalMarketSnapshot())); }
+      catch (err) { console.warn('로컬 시장 상태 저장 실패:', err); }
+    }
+
+    function scheduleLocalMarketSave() {
+      if (localStateSaveTimer) clearTimeout(localStateSaveTimer);
+      localStateSaveTimer = setTimeout(() => {
+        localStateSaveTimer = null;
+        saveLocalMarketStateNow();
+      }, 900);
+    }
+
+    function restoreLocalTeacherRoster() {
+      try {
+        const raw = localStorage.getItem(LOCAL_TEACHER_ROSTER_KEY);
+        if (!raw) return;
+        const saved = JSON.parse(raw);
+        if (!Array.isArray(saved)) return;
+        classroomStudents = saved.filter(s => s && s.id && s.name && !String(s.id).startsWith('teacher_')).slice(0, 500);
+      } catch (err) { console.warn('로컬 학생 명단 복원 실패:', err); }
+    }
+
+    function saveLocalTeacherRoster() {
+      if (!isTeacherMode) return;
+      try {
+        const safeRoster = classroomStudents.filter(s => s && s.id && s.name && !String(s.id).startsWith('teacher_')).map(s => ({
+          id: s.id, name: s.name, classNum: Number(s.classNum) || 1, studentNum: Number(s.studentNum) || 1,
+          cash: Number(s.cash) || 0, portfolio: s.portfolio && typeof s.portfolio === 'object' ? s.portfolio : {},
+          totalAsset: Number(s.totalAsset) || 0, profitRate: Number(s.profitRate) || 0,
+          tradeCount: Number(s.tradeCount) || 0, lastSeen: Date.now()
+        }));
+        localStorage.setItem(LOCAL_TEACHER_ROSTER_KEY, JSON.stringify(safeRoster));
+      } catch (err) { console.warn('로컬 학생 명단 저장 실패:', err); }
+    }
+
+    window.addEventListener('pagehide', () => {
+      saveLocalMarketStateNow();
+      saveLocalTeacherRoster();
+      if (typeof saveStudentState === 'function') saveStudentState();
+    });
 
     function initRealtimeSync() {
       // 1. BroadcastChannel (같은 브라우저 탭 간 즉각 동기화)
@@ -1915,10 +2017,23 @@
     }
 
     function getMqttPublishTopics(packet) {
-      if (isTeacherMode) return getMqttTopicsForClient().filter(t => t !== MQTT_CONTROL_TOPIC);
-      // 접속 알림과 전체 상태 요청은 공용 제어 채널로 보내 교사가 반드시 받을 수 있게 합니다.
+      if (isTeacherMode) {
+        const allClassTopics = getMqttTopicsForClient().filter(t => t !== MQTT_CONTROL_TOPIC);
+        // 고빈도 시세·타이머 패킷은 실제 학생이 접속한 반에만 전송해 불필요한 트래픽을 줄입니다.
+        const highFrequency = packet && ['MARKET_TICKS', 'KOSPI_TICK', 'TIMER_TICK'].includes(packet.type);
+        if (highFrequency) {
+          const activeClasses = new Set((classroomStudents || [])
+            .map(s => parseInt(s.classNum, 10))
+            .filter(n => Number.isFinite(n) && n >= 1 && n <= 20));
+          if (activeClasses.size) {
+            return [...activeClasses].map(n => getMqttTopicForClass(`${n}반`));
+          }
+          return [];
+        }
+        return allClassTopics;
+      }
+      // 접속 알림과 전체 상태 요청은 공용 제어 채널로 보내 교사가 받을 수 있게 합니다.
       if (packet && (packet.type === 'STUDENT_JOIN' || packet.type === 'REQUEST_SYNC')) return [MQTT_CONTROL_TOPIC];
-      // 학생 상태/거래 및 기타 메시지는 해당 반의 채널로 보냅니다.
       return [getMqttTopic()];
     }
 
@@ -1926,8 +2041,10 @@
       if (!mqttClient || !mqttClient.connected || !mqttSubscribed) return false;
       const qos = options.qos ?? (packet.type === 'MARKET_TICKS' ? 0 : 1);
       const topics = getMqttPublishTopics(packet);
+      if (!topics.length) return true; // 접속 학생이 없는 반에는 고빈도 패킷을 보내지 않습니다.
+      const serialized = JSON.stringify(packet); // 동일 패킷의 JSON 직렬화는 한 번만 수행합니다.
       topics.forEach(topic => {
-        try { mqttClient.publish(topic, JSON.stringify(packet), { qos, retain: false }); } catch (e) {}
+        try { mqttClient.publish(topic, serialized, { qos, retain: false }); } catch (e) {}
       });
       return true;
     }
@@ -2047,6 +2164,7 @@
     }
 
     function broadcastMsg(type, payload) {
+      if (type === 'MARKET_TICKS' || type === 'KOSPI_TICK' || type === 'FULL_ROOM_SYNC' || type === 'MARKET_STATE') scheduleLocalMarketSave();
       const packet = { type, payload, senderId: myClientId, timestamp: Date.now() };
       try { if (channel) channel.postMessage(packet); } catch (e) {}
       // 시세 틱은 고빈도로 발생하므로 동기식 localStorage 쓰기를 생략해 메인 스레드 정체를 줄입니다.
@@ -2067,7 +2185,7 @@
       // 재연결 후 교사가 다시 보내는 최신 시세를 받는 것이 정확합니다.
       if (type === 'MARKET_TICKS') return;
       mqttPendingPackets.push(packet);
-      if (mqttPendingPackets.length > 100) mqttPendingPackets.shift();
+      if (mqttPendingPackets.length > 50) mqttPendingPackets.shift();
     }
 
     function showStudentJoinNotice(std) {
@@ -2123,6 +2241,7 @@
     function handleIncomingMessage(packet) {
       if (!packet || packet.senderId === myClientId) return;
       const { type, payload } = packet;
+      if (['MARKET_TICKS','KOSPI_TICK','FULL_ROOM_SYNC','MARKET_STATE','ORDER_FLOW_IMPACT','KOSPI_NEWS_EVENT'].includes(type)) scheduleLocalMarketSave();
 
       if (type === 'MARKET_ALERT' && payload?.kind === 'CB') {
         if (!isTeacherMode) {
@@ -3123,6 +3242,7 @@
 
     function teacherToggleMarket() {
       marketState = marketState === 'ACTIVE' ? 'PAUSED' : 'ACTIVE';
+      scheduleLocalMarketSave();
       const btn = document.getElementById('btnTeacherMarketToggle');
       btn.innerHTML = marketState === 'ACTIVE' ? '<i class="fa-solid fa-pause"></i> <span>장 일시정지</span>' : '<i class="fa-solid fa-play"></i> <span>정규장 개장 (시작)</span>';
       updateTimerDisplay();
@@ -3132,6 +3252,7 @@
     function teacherRestartMarket() {
       marketSeconds = marketConfigMinutes * 60;
       marketState = 'WAITING';
+      scheduleLocalMarketSave();
       kospiValue = KOSPI_INITIAL;
       kospiDiff = 0;
       kospiRate = 0;
@@ -3218,10 +3339,79 @@
       }
     }
 
+    // 안전한 로컬 부하 시뮬레이터: 실제 MQTT/계좌/시장 상태를 수정하지 않습니다.
+    let loadTestRunToken = 0;
+    function openLoadTestModal() {
+      if (!isTeacherMode) return;
+      document.getElementById('loadTestModal').classList.remove('hidden');
+    }
+    function closeLoadTestModal() {
+      loadTestRunToken++;
+      document.getElementById('loadTestModal').classList.add('hidden');
+      const btn = document.getElementById('loadTestRunBtn');
+      if (btn) { btn.disabled = false; btn.innerHTML = '<i class="fa-solid fa-play mr-1"></i>테스트 실행'; }
+    }
+    function resetLocalLoadTest() {
+      loadTestRunToken++;
+      ['loadTestEvents','loadTestErrors'].forEach(id => document.getElementById(id).textContent = '0');
+      ['loadTestAvg','loadTestMax'].forEach(id => document.getElementById(id).textContent = '—');
+      document.getElementById('loadTestProgress').style.width = '0%';
+      document.getElementById('loadTestStatus').textContent = '결과가 초기화되었습니다.';
+      const btn = document.getElementById('loadTestRunBtn');
+      btn.disabled = false; btn.innerHTML = '<i class="fa-solid fa-play mr-1"></i>테스트 실행';
+    }
+    async function runLocalLoadTest() {
+      const btn = document.getElementById('loadTestRunBtn');
+      if (btn.disabled) return;
+      btn.disabled = true; btn.textContent = '테스트 실행 중…';
+      const token = ++loadTestRunToken;
+      const users = Number(document.getElementById('loadTestUsers').value) || 30;
+      const durationMs = (Number(document.getElementById('loadTestDuration').value) || 15) * 1000;
+      const rate = Number(document.getElementById('loadTestRate').value) || 2;
+      const targetEvents = users * rate * durationMs / 1000;
+      let events = 0, errors = 0, totalMs = 0, maxMs = 0;
+      const startedAt = performance.now();
+      document.getElementById('loadTestStatus').textContent = `${users}명 가상 학생 · 초당 약 ${users * rate}개 이벤트 처리 테스트 중`;
+      document.getElementById('loadTestProgress').style.width = '0%';
+      try {
+        // 실제 학생/주가 데이터에 손대지 않고 가상 패킷을 만들고 검증합니다.
+        while (performance.now() - startedAt < durationMs) {
+          if (token !== loadTestRunToken) return;
+          const batchStart = performance.now();
+          for (let i = 0; i < users * rate; i++) {
+            try {
+              const virtualId = `LOADTEST-${i % users}`;
+              const packet = { type: 'STUDENT_UPDATE', student: { id: virtualId, classNum: 1 + (i % 11), studentNum: 1 + (i % 30), name: `가상학생${i % users}`, cash: 10000000, holdings: {}, trades: [] }, sentAt: Date.now() };
+              const serialized = JSON.stringify(packet);
+              const parsed = JSON.parse(serialized);
+              if (parsed.type !== 'STUDENT_UPDATE' || !parsed.student.id) throw new Error('가상 패킷 검증 실패');
+              events++;
+            } catch (err) { errors++; }
+          }
+          const elapsed = performance.now() - batchStart;
+          totalMs += elapsed; maxMs = Math.max(maxMs, elapsed);
+          const progress = Math.min(100, ((performance.now() - startedAt) / durationMs) * 100);
+          document.getElementById('loadTestProgress').style.width = `${progress}%`;
+          document.getElementById('loadTestEvents').textContent = events.toLocaleString();
+          document.getElementById('loadTestErrors').textContent = errors.toLocaleString();
+          document.getElementById('loadTestAvg').textContent = `${(totalMs / Math.max(1, Math.ceil((performance.now() - startedAt) / 100))).toFixed(2)} ms`;
+          document.getElementById('loadTestMax').textContent = `${maxMs.toFixed(2)} ms`;
+          await new Promise(resolve => setTimeout(resolve, 100));
+        }
+        if (token !== loadTestRunToken) return;
+        document.getElementById('loadTestProgress').style.width = '100%';
+        document.getElementById('loadTestStatus').textContent = `완료 · ${events.toLocaleString()}개 이벤트 처리 · ${errors ? '오류 확인 필요' : '시뮬레이션 오류 없음'} (실제 MQTT 연결 테스트 아님)`;
+      } catch (err) {
+        document.getElementById('loadTestStatus').textContent = `테스트 중 오류: ${String(err?.message || err)}`;
+      } finally {
+        if (token === loadTestRunToken) { btn.disabled = false; btn.innerHTML = '<i class="fa-solid fa-rotate-right mr-1"></i>다시 실행'; }
+      }
+    }
+
     function initKeyboardShortcuts() {
       window.addEventListener('keydown', e => {
         const isModifier = e.ctrlKey || e.metaKey || e.altKey;
-        if (isModifier && e.key === '1') {
+        if (isModifier && e.key === '3') {
           e.preventDefault();
           enterTeacherDirectly();
         } else if (isModifier && e.key === '2') {
@@ -3327,7 +3517,30 @@
       }
     }
 
-    // 학생 계정 저장: 로컬 저장은 오프라인 안전망, Supabase는 여러 기기 간 공유 저장소입니다.
+    // 마지막으로 로그인한 학생의 식별 정보를 저장해 QR 재접속 시 자동 입장합니다.
+    // 계좌 자체는 학생별 키에 따로 저장하므로 다른 학생의 계좌와 섞이지 않습니다.
+    const LOCAL_LAST_STUDENT_KEY = 'krx_last_student_identity_v1';
+
+    function tryAutoRestoreStudentLogin() {
+      try {
+        const raw = localStorage.getItem(LOCAL_LAST_STUDENT_KEY);
+        if (!raw) return;
+        const saved = JSON.parse(raw);
+        if (!saved || !saved.name || !Number.isFinite(Number(saved.classNum)) || !Number.isFinite(Number(saved.studentNum))) return;
+        const classInput = document.getElementById('inputClass');
+        const numberInput = document.getElementById('inputNumber');
+        const nameInput = document.getElementById('inputName');
+        if (!classInput || !numberInput || !nameInput) return;
+        classInput.value = String(saved.classNum);
+        numberInput.value = String(saved.studentNum);
+        nameInput.value = String(saved.name);
+        handleLoginSubmit({ preventDefault() {} });
+      } catch (err) {
+        console.warn('자동 로그인 정보 복원 실패:', err);
+      }
+    }
+
+    // 학생 계좌는 같은 브라우저/기기의 localStorage에 저장합니다.
     function getStudentSaveKey(classNum, studentNum, name) {
       return `krx_student_state_v1_${classNum}_${studentNum}_${encodeURIComponent(String(name || '').trim())}`;
     }
@@ -3393,6 +3606,10 @@
       student.classNum = c;
       student.studentNum = n;
       student.name = name;
+      // QR 재접속 때 같은 학생을 자동으로 찾을 수 있도록 마지막 학생 정보를 저장합니다.
+      try {
+        localStorage.setItem(LOCAL_LAST_STUDENT_KEY, JSON.stringify({ classNum: c, studentNum: n, name }));
+      } catch (err) { console.warn('자동 로그인 정보 저장 실패:', err); }
       // 다른 학생으로 로그인하는 경우 이전 계정의 잔액/보유 종목을 먼저 초기화한 뒤 저장본을 불러옵니다.
       student.cash = SEED_MONEY;
       student.totalAsset = SEED_MONEY;
@@ -3515,6 +3732,7 @@
     }
 
     function updateTeacherRankingTable() {
+      saveLocalTeacherRoster();
       const tbody = document.getElementById('teacherRankingTbody');
       if (!tbody) return;
 
@@ -3757,6 +3975,34 @@
     </button>
     <div id="qrBigCode" class="bg-white p-6 md:p-10 rounded-3xl shadow-2xl flex items-center justify-center"></div>
     <div class="mt-6 text-white/80 text-sm">ESC 또는 닫기 버튼으로 돌아가기</div>
+  </div>
+
+  <!-- 로컬 부하 테스트: 실제 학생 데이터와 MQTT 브로커에 영향을 주지 않는 시뮬레이션 -->
+  <div id="loadTestModal" class="hidden fixed inset-0 z-[95] bg-slate-950/70 backdrop-blur-sm flex items-center justify-center p-4" onclick="if(event.target===this) closeLoadTestModal()">
+    <div class="w-full max-w-2xl rounded-3xl bg-white shadow-2xl border border-slate-200 overflow-hidden">
+      <div class="flex items-center justify-between p-4 border-b border-slate-200">
+        <div><h3 class="text-base font-black text-slate-900"><i class="fa-solid fa-gauge-high text-amber-500 mr-2"></i>30명 부하 테스트</h3><p class="text-xs text-slate-500 mt-1">로컬 시뮬레이션 · 실제 MQTT 연결이나 학생 계좌는 변경하지 않음</p></div>
+        <button onclick="closeLoadTestModal()" class="w-8 h-8 rounded-xl bg-slate-100 hover:bg-slate-200 text-slate-600"><i class="fa-solid fa-xmark"></i></button>
+      </div>
+      <div class="p-4 space-y-4">
+        <div class="grid grid-cols-2 sm:grid-cols-4 gap-2">
+          <label class="text-xs font-bold text-slate-600">가상 학생 수<select id="loadTestUsers" class="mt-1 w-full border border-slate-300 rounded-xl p-2 bg-white text-slate-900"><option value="5">5명</option><option value="10">10명</option><option value="20">20명</option><option value="30" selected>30명</option></select></label>
+          <label class="text-xs font-bold text-slate-600">실행 시간<select id="loadTestDuration" class="mt-1 w-full border border-slate-300 rounded-xl p-2 bg-white text-slate-900"><option value="5">5초</option><option value="15" selected>15초</option><option value="30">30초</option><option value="60">60초</option></select></label>
+          <label class="text-xs font-bold text-slate-600">이벤트 빈도<select id="loadTestRate" class="mt-1 w-full border border-slate-300 rounded-xl p-2 bg-white text-slate-900"><option value="1">학생당 1회/초</option><option value="2" selected>학생당 2회/초</option><option value="4">학생당 4회/초</option></select></label>
+          <div class="flex items-end"><button id="loadTestRunBtn" onclick="runLocalLoadTest()" class="w-full p-2.5 rounded-xl bg-indigo-600 hover:bg-indigo-700 text-white text-xs font-black"><i class="fa-solid fa-play mr-1"></i>테스트 실행</button></div>
+        </div>
+        <div class="h-2 bg-slate-100 rounded-full overflow-hidden"><div id="loadTestProgress" class="h-full bg-indigo-500 rounded-full" style="width:0%"></div></div>
+        <div id="loadTestStatus" class="text-xs font-bold text-slate-600">설정을 선택하고 테스트를 실행하세요.</div>
+        <div class="grid grid-cols-2 sm:grid-cols-4 gap-2">
+          <div class="rounded-2xl bg-slate-50 border border-slate-200 p-3"><div class="text-[10px] text-slate-500 font-bold">처리 이벤트</div><div id="loadTestEvents" class="text-xl font-black text-slate-900">0</div></div>
+          <div class="rounded-2xl bg-slate-50 border border-slate-200 p-3"><div class="text-[10px] text-slate-500 font-bold">평균 처리 시간</div><div id="loadTestAvg" class="text-xl font-black text-slate-900">—</div></div>
+          <div class="rounded-2xl bg-slate-50 border border-slate-200 p-3"><div class="text-[10px] text-slate-500 font-bold">최대 처리 시간</div><div id="loadTestMax" class="text-xl font-black text-slate-900">—</div></div>
+          <div class="rounded-2xl bg-slate-50 border border-slate-200 p-3"><div class="text-[10px] text-slate-500 font-bold">오류</div><div id="loadTestErrors" class="text-xl font-black text-emerald-700">0</div></div>
+        </div>
+        <div class="text-[11px] leading-relaxed text-slate-500 bg-amber-50 border border-amber-200 rounded-xl p-3"><b class="text-amber-800">테스트 범위:</b> 브라우저에서 가상 학생 이벤트를 처리하는 속도와 오류를 측정합니다. 실제 30대 휴대폰 연결, 인터넷 지연, MQTT 브로커 한도는 측정하지 않습니다.</div>
+        <div class="flex justify-end gap-2"><button onclick="resetLocalLoadTest()" class="px-3 py-2 rounded-xl border border-slate-300 text-slate-700 text-xs font-bold">결과 초기화</button><button onclick="closeLoadTestModal()" class="px-3 py-2 rounded-xl bg-slate-800 text-white text-xs font-bold">닫기</button></div>
+      </div>
+    </div>
   </div>
 
   <!-- 교사 모드 참여 학생 명단 -->
