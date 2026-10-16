@@ -1952,7 +1952,7 @@
         if (!raw) return;
         const saved = JSON.parse(raw);
         if (!Array.isArray(saved)) return;
-        classroomStudents = saved.filter(s => s && s.id && s.name && !String(s.id).startsWith('teacher_')).slice(0, 500);
+        classroomStudents = saved.filter(s => s && s.id && s.name && !String(s.id).startsWith('teacher_') && Number(s.lastSeen) > Date.now() - 45000).slice(0, 500);
       } catch (err) { console.warn('로컬 학생 명단 복원 실패:', err); }
     }
 
@@ -1963,7 +1963,7 @@
           id: s.id, name: s.name, classNum: Math.max(1, Math.min(11, Number(s.classNum) || 1)), studentNum: Number(s.studentNum) || 1,
           cash: Number(s.cash) || 0, portfolio: s.portfolio && typeof s.portfolio === 'object' ? s.portfolio : {},
           totalAsset: Number(s.totalAsset) || 0, profitRate: Number(s.profitRate) || 0,
-          tradeCount: Number(s.tradeCount) || 0, lastSeen: Number(s.lastSeen) || Date.now()
+          tradeCount: Number(s.tradeCount) || 0, lastSeen: Number(s.lastSeen) || 0
         }));
         localStorage.setItem(LOCAL_TEACHER_ROSTER_KEY, JSON.stringify(safeRoster));
       } catch (err) { console.warn('로컬 학생 명단 저장 실패:', err); }
@@ -2182,54 +2182,98 @@
       if (type === 'MARKET_TICKS' || type === 'KOSPI_TICK' || type === 'FULL_ROOM_SYNC' || type === 'MARKET_STATE') scheduleLocalMarketSave();
       const packet = { type, payload, senderId: myClientId, timestamp: Date.now() };
       try { if (channel) channel.postMessage(packet); } catch (e) {}
-      // 시세 틱은 고빈도로 발생하므로 동기식 localStorage 쓰기를 생략해 메인 스레드 정체를 줄입니다.
-      // 거래·입장·시장 상태 등 중요 이벤트는 기존처럼 storage 이벤트로도 전달합니다.
+      // 중요한 이벤트는 다른 탭에도 전달합니다.
       if (type !== 'MARKET_TICKS') {
         try { localStorage.setItem('krx_sync_' + selectedClass, JSON.stringify(packet)); } catch (e) {}
       }
+
       if (mqttClient && mqttClient.connected && mqttSubscribed) {
         try {
-          // 고빈도 시세 틱은 최신 값이 중요하므로 QoS 0으로 지연을 줄이고,
-          // 주문/입장/시장상태 등 중요한 이벤트는 QoS 1로 전달합니다.
           const highFrequency = ['MARKET_TICKS', 'KOSPI_TICK', 'TIMER_TICK'].includes(type);
           const qos = highFrequency ? 0 : 1;
+          // 로그아웃은 명단에서 반드시 제거되어야 하므로 제어 토픽에 QoS 1로 직접 발행하고,
+          // 브로커 확인(PUBACK)을 기다립니다. 일반 메시지와 달리 실패 시 재시도합니다.
+          if (type === 'STUDENT_LEAVE') {
+            const serialized = JSON.stringify(packet);
+            mqttClient.publish(MQTT_CONTROL_TOPIC, serialized, { qos: 1, retain: false }, (err) => {
+              if (err) {
+                setTimeout(() => {
+                  try {
+                    if (mqttClient && mqttClient.connected && mqttSubscribed) {
+                      mqttClient.publish(MQTT_CONTROL_TOPIC, serialized, { qos: 1, retain: false }, (retryErr) => {
+                        if (retryErr && !mqttPendingPackets.some(p => p.type === 'STUDENT_LEAVE' && p.payload?.student?.id === payload?.student?.id)) mqttPendingPackets.push(packet);
+                      });
+                    } else if (!mqttPendingPackets.some(p => p.type === 'STUDENT_LEAVE' && p.payload?.student?.id === payload?.student?.id)) {
+                      mqttPendingPackets.push(packet);
+                    }
+                  } catch (e) {
+                    if (!mqttPendingPackets.some(p => p.type === 'STUDENT_LEAVE' && p.payload?.student?.id === payload?.student?.id)) mqttPendingPackets.push(packet);
+                  }
+                }, 350);
+              }
+            });
+            return;
+          }
           publishMqttPacket(packet, { qos });
           return;
         } catch (e) {}
       }
-      // 연결이 끊긴 동안에는 오래된 시세/타이머/하트비트를 대기열에 쌓지 않습니다.
-      // 재연결 시 학생은 REQUEST_SYNC로 현재 상태를 다시 받으므로 과거 패킷은 불필요합니다.
+      // 연결이 끊긴 동안에는 오래된 시세/타이머/하트비트를 쌓지 않습니다.
       if (['MARKET_TICKS', 'KOSPI_TICK', 'TIMER_TICK', 'STUDENT_HEARTBEAT'].includes(type)) return;
+      // 로그아웃은 재연결 후에도 전달되어야 하므로 대기열에 남깁니다.
+      if (type === 'STUDENT_LEAVE') {
+        mqttPendingPackets = mqttPendingPackets.filter(p => !(p.type === 'STUDENT_LEAVE' && p.payload?.student?.id === payload?.student?.id));
+      }
       mqttPendingPackets.push(packet);
       if (mqttPendingPackets.length > 30) mqttPendingPackets.shift();
     }
 
-    function showStudentJoinNotice(std) {
-      const name = std?.name || '학생';
-      const classNum = std?.classNum ? `${std.classNum}반` : selectedClass;
-      let el = document.getElementById('studentJoinNotice');
-      if (!el) {
-        el = document.createElement('div');
-        el.id = 'studentJoinNotice';
-        el.className = 'fixed top-16 right-4 z-[120] w-[min(360px,calc(100vw-2rem))] bg-white border border-emerald-200 shadow-2xl rounded-2xl p-3 flex items-start gap-3 cursor-pointer';
-        document.body.appendChild(el);
-      }
-      el.innerHTML = `
-        <div class="w-9 h-9 rounded-xl bg-emerald-100 text-emerald-700 flex items-center justify-center flex-shrink-0">
-          <i class="fa-solid fa-user-plus"></i>
-        </div>
-        <div class="min-w-0 flex-1">
-          <div class="text-xs font-black text-emerald-700">학생 입장 알림</div>
-          <div class="text-sm font-black text-slate-900 truncate">${name}</div>
-          <div class="text-[11px] text-slate-500">${classNum} 학생이 입장했습니다.</div>
-        </div>
-        <button type="button" class="text-slate-400 hover:text-slate-700 text-xs" onclick="this.closest('#studentJoinNotice')?.remove()">
-          <i class="fa-solid fa-xmark"></i>
-        </button>`;
-      clearTimeout(window.__studentJoinNoticeTimer);
-      window.__studentJoinNoticeTimer = setTimeout(() => { if (el) el.remove(); }, 5000);
 
-      // 브라우저 알림 권한이 이미 허용된 경우에도 알려줌
+    function showStudentJoinNotice(std) {
+      const name = String(std?.name || '학생');
+      const classNum = std?.classNum ? `${std.classNum}반` : selectedClass;
+      const id = `studentJoinNotice_${Date.now()}_${Math.random().toString(36).slice(2, 7)}`;
+      let stack = document.getElementById('studentJoinNoticeStack');
+      if (!stack) {
+        stack = document.createElement('div');
+        stack.id = 'studentJoinNoticeStack';
+        stack.className = 'fixed top-16 right-4 z-[120] w-[min(360px,calc(100vw-2rem))] flex flex-col gap-2 pointer-events-none';
+        document.body.appendChild(stack);
+      }
+
+      const el = document.createElement('div');
+      el.id = id;
+      el.className = 'bg-white border border-emerald-200 shadow-2xl rounded-2xl p-3 flex items-start gap-3 pointer-events-auto';
+      const iconBox = document.createElement('div');
+      iconBox.className = 'w-9 h-9 rounded-xl bg-emerald-100 text-emerald-700 flex items-center justify-center flex-shrink-0';
+      iconBox.innerHTML = '<i class="fa-solid fa-user-plus"></i>';
+      const content = document.createElement('div');
+      content.className = 'min-w-0 flex-1';
+      const heading = document.createElement('div');
+      heading.className = 'text-xs font-black text-emerald-700';
+      heading.textContent = '학생 입장 알림';
+      const studentName = document.createElement('div');
+      studentName.className = 'text-sm font-black text-slate-900 break-words';
+      studentName.textContent = name;
+      const detail = document.createElement('div');
+      detail.className = 'text-[11px] text-slate-500';
+      detail.textContent = `${classNum} 학생이 입장했습니다.`;
+      content.append(heading, studentName, detail);
+      const close = document.createElement('button');
+      close.type = 'button';
+      close.className = 'text-slate-400 hover:text-slate-700 text-xs';
+      close.setAttribute('aria-label', '알림 닫기');
+      close.innerHTML = '<i class="fa-solid fa-xmark"></i>';
+      close.addEventListener('click', () => el.remove());
+      el.append(iconBox, content, close);
+      stack.appendChild(el);
+
+      // 연속 입장 시에도 각 학생의 알림이 겹쳐 사라지지 않도록 개별 관리합니다.
+      setTimeout(() => {
+        el.remove();
+        if (stack && !stack.children.length) stack.remove();
+      }, 6000);
+
       try {
         if ('Notification' in window && Notification.permission === 'granted') {
           new Notification('KRX 모의주식 - 학생 입장', { body: `${name} (${classNum}) 학생이 입장했습니다.` });
