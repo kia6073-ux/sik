@@ -7,7 +7,6 @@
   <script src="https://cdn.tailwindcss.com"></script>
   <link rel="stylesheet" href="https://cdnjs.cloudflare.com/ajax/libs/font-awesome/6.5.1/css/all.min.css">
   <script src="https://cdnjs.cloudflare.com/ajax/libs/qrcodejs/1.0.0/qrcode.min.js"></script>
-  <script src="https://cdnjs.cloudflare.com/ajax/libs/paho-mqtt/1.0.1/mqttws31.min.js"></script>
   <script src="https://unpkg.com/mqtt/dist/mqtt.min.js"></script>
   <script>
     tailwind.config = {
@@ -93,6 +92,9 @@
           <div id="headerStudentName" class="text-xs font-black text-indigo-950 leading-tight">로그인 대기</div>
           <div id="headerStudentClass" class="text-[10px] font-bold text-indigo-600">계좌 미개설</div>
         </div>
+      </button>
+      <button id="studentLogoutBtn" type="button" onclick="logoutStudent()" class="hidden px-2.5 py-2 rounded-lg bg-rose-50 hover:bg-rose-100 border border-rose-200 text-rose-700 text-[11px] font-black whitespace-nowrap" title="로그아웃">
+        <i class="fa-solid fa-right-from-bracket mr-1"></i>로그아웃
       </button>
 
       <div class="hidden sm:flex items-center gap-2 bg-slate-50 border border-slate-200 rounded-lg px-2.5 py-1">
@@ -327,7 +329,7 @@
             <label class="block text-xs font-bold text-slate-600 mb-1">학급 (반)</label>
             <div class="flex items-center gap-1">
               <span class="text-xs font-black text-slate-700">3학년</span>
-              <input id="inputClass" type="number" min="1" max="20" value="1" required class="flex-1 px-2 py-1.5 bg-slate-50 border border-slate-200 rounded-lg text-xs font-black text-center focus:outline-none focus:border-indigo-500">
+              <input id="inputClass" type="number" min="1" max="11" value="1" required class="flex-1 px-2 py-1.5 bg-slate-50 border border-slate-200 rounded-lg text-xs font-black text-center focus:outline-none focus:border-indigo-500">
               <span class="text-xs font-black text-slate-700">반</span>
             </div>
           </div>
@@ -1334,12 +1336,18 @@
       tradeCount: 0
     };
 
+    let studentHeartbeatTimer = null;
+    let studentLoggedIn = false;
     let selectedStockId = '005930';
     let currentSector = 'ALL';
     let searchTerm = '';
     let marketConfigMinutes = 10;
     let marketSeconds = 10 * 60;
     let marketState = 'WAITING'; // WAITING, ACTIVE, PAUSED, CLOSED
+    // 학생 화면은 마지막 교사 타이머 패킷을 기준으로 로컬에서 초를 계산해 통신 지연 중에도 멈추지 않게 합니다.
+    let studentTimerAnchorSeconds = null;
+    let studentTimerAnchorAt = 0;
+    let lastTimerSyncTimestamp = 0;
     let isTeacherMode = false;
     let selectedClass = '1반';
     let qrSelectedClass = '1반';
@@ -1380,7 +1388,7 @@
       const roomParam = p.get('room');
       const classParam = p.get('class');
       const parsedClass = parseInt(classParam || roomParam || '1', 10);
-      const safeClass = Number.isFinite(parsedClass) ? Math.max(1, Math.min(20, parsedClass)) : 1;
+      const safeClass = Number.isFinite(parsedClass) ? Math.max(1, Math.min(11, parsedClass)) : 1;
       // QR 주소의 반 번호를 초기 학급으로 확정합니다.
       // 숫자(2) 또는 '2반' 어느 형태로 들어와도 동일하게 처리합니다.
       if (roomParam || classParam) selectedClass = `${safeClass}반`;
@@ -1845,14 +1853,21 @@
       };
       scheduleNextKospiTick();
 
-            // 3. 장 카운트다운 타이머 (교사 마스터가 1초마다 전송)
+            // 3. 장 카운트다운 타이머 (교사는 기준 시각 전송, 학생은 로컬 보간)
       setInterval(() => {
-        if (!isTeacherMode) return;
+        if (!isTeacherMode) {
+          if (studentTimerAnchorSeconds !== null && marketState === 'ACTIVE') {
+            const elapsed = Math.floor((Date.now() - studentTimerAnchorAt) / 1000);
+            const nextSeconds = Math.max(0, studentTimerAnchorSeconds - elapsed);
+            if (nextSeconds !== marketSeconds) { marketSeconds = nextSeconds; updateTimerDisplay(); }
+          }
+          return;
+        }
         if (marketState === 'ACTIVE') {
           if (marketSeconds > 0) {
             marketSeconds--;
             updateTimerDisplay();
-            broadcastMsg('TIMER_TICK', { seconds: marketSeconds, state: marketState });
+            broadcastMsg('TIMER_TICK', { seconds: marketSeconds, state: marketState, sentAt: Date.now() });
 
             // 종목 뉴스는 10~20초 사이의 랜덤한 간격으로 발생
             const nowTime = Date.now();
@@ -1863,7 +1878,7 @@
           } else {
             marketState = 'CLOSED';
             updateTimerDisplay();
-            broadcastMsg('TIMER_TICK', { seconds: 0, state: 'CLOSED' });
+            broadcastMsg('TIMER_TICK', { seconds: 0, state: 'CLOSED', sentAt: Date.now() });
             showMarketClosedModal();
           }
         }
@@ -1945,10 +1960,10 @@
       if (!isTeacherMode) return;
       try {
         const safeRoster = classroomStudents.filter(s => s && s.id && s.name && !String(s.id).startsWith('teacher_')).map(s => ({
-          id: s.id, name: s.name, classNum: Number(s.classNum) || 1, studentNum: Number(s.studentNum) || 1,
+          id: s.id, name: s.name, classNum: Math.max(1, Math.min(11, Number(s.classNum) || 1)), studentNum: Number(s.studentNum) || 1,
           cash: Number(s.cash) || 0, portfolio: s.portfolio && typeof s.portfolio === 'object' ? s.portfolio : {},
           totalAsset: Number(s.totalAsset) || 0, profitRate: Number(s.profitRate) || 0,
-          tradeCount: Number(s.tradeCount) || 0, lastSeen: Date.now()
+          tradeCount: Number(s.tradeCount) || 0, lastSeen: Number(s.lastSeen) || Date.now()
         }));
         localStorage.setItem(LOCAL_TEACHER_ROSTER_KEY, JSON.stringify(safeRoster));
       } catch (err) { console.warn('로컬 학생 명단 저장 실패:', err); }
@@ -1993,7 +2008,7 @@
     function getMqttTopicForClass(classValue) {
       // 모든 반이 동일한 규칙을 사용하되, 반별 메시지 채널은 분리합니다.
       const match = String(classValue || '1반').match(/\d+/);
-      const classNum = match ? Math.max(1, Math.min(20, parseInt(match[0], 10))) : 1;
+      const classNum = match ? Math.max(1, Math.min(11, parseInt(match[0], 10))) : 1;
       return `krx_class_sync_${classNum}`;
     }
 
@@ -2006,7 +2021,7 @@
     const MQTT_CONTROL_TOPIC = 'krx_control_presence_v1';
 
     function getMqttTopicsForClient() {
-      const classTopics = Array.from({ length: 20 }, (_, i) => getMqttTopicForClass(`${i + 1}반`));
+      const classTopics = Array.from({ length: 11 }, (_, i) => getMqttTopicForClass(`${i + 1}반`));
       // 교사는 모든 반의 데이터 채널과 공용 제어 채널을 구독합니다.
       if (isTeacherMode) return [...classTopics, MQTT_CONTROL_TOPIC];
       // 학생은 자기 반 데이터 채널만 구독합니다. 공용 제어 채널에는 구독하지 않습니다.
@@ -2021,7 +2036,7 @@
         if (highFrequency) {
           const activeClasses = new Set((classroomStudents || [])
             .map(s => parseInt(s.classNum, 10))
-            .filter(n => Number.isFinite(n) && n >= 1 && n <= 20));
+            .filter(n => Number.isFinite(n) && n >= 1 && n <= 11));
           if (activeClasses.size) {
             return [...activeClasses].map(n => getMqttTopicForClass(`${n}반`));
           }
@@ -2031,7 +2046,7 @@
         return allClassTopics;
       }
       // 접속 알림과 전체 상태 요청은 공용 제어 채널로 보내 교사가 받을 수 있게 합니다.
-      if (packet && (packet.type === 'STUDENT_JOIN' || packet.type === 'REQUEST_SYNC')) return [MQTT_CONTROL_TOPIC];
+      if (packet && ['STUDENT_JOIN', 'STUDENT_LEAVE', 'STUDENT_HEARTBEAT', 'REQUEST_SYNC'].includes(packet.type)) return [MQTT_CONTROL_TOPIC];
       return [getMqttTopic()];
     }
 
@@ -2060,10 +2075,14 @@
     function flushMqttPendingPackets() {
       if (!mqttClient || !mqttClient.connected || !mqttSubscribed) return;
       if (!mqttPendingPackets.length) return;
-      const queue = mqttPendingPackets.splice(0);
+      // 재연결 뒤에는 오래된 시세/타이머/하트비트를 몰아서 보내지 않습니다.
+      // 학생이 다시 연결되면 REQUEST_SYNC로 현재 시장 상태를 새로 받습니다.
+      const queue = mqttPendingPackets.splice(0).filter(packet =>
+        packet && !['MARKET_TICKS', 'KOSPI_TICK', 'TIMER_TICK', 'STUDENT_HEARTBEAT'].includes(packet.type)
+      );
       queue.forEach(packet => {
         const sent = publishMqttPacket(packet);
-        if (!sent) mqttPendingPackets.unshift(packet);
+        if (!sent) mqttPendingPackets.push(packet);
       });
     }
 
@@ -2172,16 +2191,17 @@
         try {
           // 고빈도 시세 틱은 최신 값이 중요하므로 QoS 0으로 지연을 줄이고,
           // 주문/입장/시장상태 등 중요한 이벤트는 QoS 1로 전달합니다.
-          const qos = 1;
+          const highFrequency = ['MARKET_TICKS', 'KOSPI_TICK', 'TIMER_TICK'].includes(type);
+          const qos = highFrequency ? 0 : 1;
           publishMqttPacket(packet, { qos });
           return;
         } catch (e) {}
       }
-      // 연결이 끊긴 동안의 오래된 시세 틱은 재전송하지 않습니다.
-      // 재연결 후 교사가 다시 보내는 최신 시세를 받는 것이 정확합니다.
-      if (type === 'MARKET_TICKS') return;
+      // 연결이 끊긴 동안에는 오래된 시세/타이머/하트비트를 대기열에 쌓지 않습니다.
+      // 재연결 시 학생은 REQUEST_SYNC로 현재 상태를 다시 받으므로 과거 패킷은 불필요합니다.
+      if (['MARKET_TICKS', 'KOSPI_TICK', 'TIMER_TICK', 'STUDENT_HEARTBEAT'].includes(type)) return;
       mqttPendingPackets.push(packet);
-      if (mqttPendingPackets.length > 50) mqttPendingPackets.shift();
+      if (mqttPendingPackets.length > 30) mqttPendingPackets.shift();
     }
 
     function showStudentJoinNotice(std) {
@@ -2310,17 +2330,24 @@
         selectStock(selectedStockId);
         updateAssets();
       } else if (type === 'TIMER_TICK' && payload) {
-        // 교사의 시계와 0.1초의 오차도 없이 일치
+        // 학생은 지연 도착한 초 단위 메시지를 그대로 표시하지 않고 전송 시각만큼 보정합니다.
         if (!isTeacherMode) {
-          marketSeconds = payload.seconds;
+          const sentAt = Number(packet.timestamp || payload.sentAt || Date.now());
+          if (sentAt < lastTimerSyncTimestamp) return; // 오래된 패킷으로 시계가 되돌아가지 않게 함
+          lastTimerSyncTimestamp = sentAt;
           const oldState = marketState;
           // 학생은 서킷브레이커 중 임의로 정상장(ACTIVE)으로 복귀할 수 없습니다.
           if (!(circuitBreakerTriggeredAt && payload.state === 'ACTIVE')) {
             marketState = payload.state;
           }
+          const elapsed = marketState === 'ACTIVE' ? Math.max(0, Math.floor((Date.now() - sentAt) / 1000)) : 0;
+          marketSeconds = Math.max(0, Number(payload.seconds || 0) - elapsed);
+          studentTimerAnchorSeconds = marketSeconds;
+          studentTimerAnchorAt = Date.now();
           updateTimerDisplay();
 
           if (oldState !== 'CLOSED' && payload.state === 'CLOSED') {
+            studentTimerAnchorSeconds = 0;
             showMarketClosedModal();
           }
         }
@@ -2328,9 +2355,17 @@
         if (!isTeacherMode) {
           // CB 발동 중에는 학생 측에서 ACTIVE 상태를 받아도 정상장으로 복귀시키지 않습니다.
           const isCbEnd = payload.stabilizer === 'CB_END';
+          const sentAt = Number(packet.timestamp || Date.now());
+          if (sentAt < lastTimerSyncTimestamp) return;
           if (circuitBreakerTriggeredAt && payload.marketState === 'ACTIVE' && !isCbEnd) return;
+          lastTimerSyncTimestamp = sentAt;
           marketState = payload.marketState;
-          if (typeof payload.marketSeconds === 'number') marketSeconds = payload.marketSeconds;
+          if (typeof payload.marketSeconds === 'number') {
+            const elapsed = marketState === 'ACTIVE' ? Math.max(0, Math.floor((Date.now() - sentAt) / 1000)) : 0;
+            marketSeconds = Math.max(0, payload.marketSeconds - elapsed);
+            studentTimerAnchorSeconds = marketSeconds;
+            studentTimerAnchorAt = Date.now();
+          }
           if (typeof payload.marketConfigMinutes === 'number') marketConfigMinutes = payload.marketConfigMinutes;
           if (typeof payload.seedMoney === 'number') setSeedMoney(payload.seedMoney);
           if (isCbEnd) {
@@ -2385,6 +2420,21 @@
           selectStock(selectedStockId);
         }
         updateAssets();
+      } else if (type === 'STUDENT_LEAVE' && payload?.student) {
+        const leaving = payload.student;
+        if (isTeacherMode && leaving.id) {
+          classroomStudents = classroomStudents.filter(s => s.id !== leaving.id);
+          saveLocalTeacherRoster();
+          updateTeacherRankingTable();
+        }
+      } else if (type === 'STUDENT_HEARTBEAT' && payload?.student) {
+        const heartbeatStudent = payload.student;
+        if (isTeacherMode && heartbeatStudent.id) {
+          const heartbeatIdx = classroomStudents.findIndex(s => s.id === heartbeatStudent.id);
+          if (heartbeatIdx >= 0) {
+            classroomStudents[heartbeatIdx].lastSeen = Number(payload.sentAt || packet.timestamp || Date.now());
+          }
+        }
       } else if ((type === 'STUDENT_JOIN' || type === 'STUDENT_UPDATE') && payload?.student) {
         const std = payload.student;
         if (std.name === '선생님 (교사)' || std.id?.startsWith('teacher_')) return;
@@ -2395,8 +2445,8 @@
         if (!isTeacherMode && String(std.classNum) !== String(parseInt(selectedClass, 10))) return;
 
         const idx = classroomStudents.findIndex(s => s.id === std.id);
-        if (idx >= 0) classroomStudents[idx] = { ...classroomStudents[idx], ...std };
-        else classroomStudents.push({ ...std });
+        if (idx >= 0) classroomStudents[idx] = { ...classroomStudents[idx], ...std, lastSeen: Date.now() };
+        else classroomStudents.push({ ...std, lastSeen: Date.now() });
 
         // 학생 한 명의 매수·매도도 교사 마스터가 시장 수급으로 반영하여 전 학생에게 같은 가격을 전파합니다.
         if (isTeacherMode && payload.trade && payload.trade.stockId && (payload.trade.side === 'BUY' || payload.trade.side === 'SELL')) {
@@ -3522,8 +3572,60 @@
       }
     }
 
-    // 마지막으로 로그인한 학생의 식별 정보를 저장해 QR 재접속 시 자동 입장합니다.
-    // 계좌 자체는 학생별 키에 따로 저장하므로 다른 학생의 계좌와 섞이지 않습니다.
+    // 학생 접속 상태는 주기적으로 갱신합니다. 비정상 종료 시에도 교사 명단에서 자동 정리합니다.
+    function startStudentHeartbeat() {
+      clearInterval(studentHeartbeatTimer);
+      if (isTeacherMode || !student.id || !student.name) return;
+      studentHeartbeatTimer = setInterval(() => {
+        if (studentLoggedIn && student.id) {
+          broadcastMsg('STUDENT_HEARTBEAT', { student: { id: student.id, name: student.name, classNum: student.classNum, studentNum: student.studentNum }, sentAt: Date.now() });
+        }
+      }, 10000);
+    }
+
+    // 교사 명단에서 45초 이상 신호가 없는 학생은 접속 종료로 처리합니다.
+    setInterval(() => {
+      if (!isTeacherMode) return;
+      const cutoff = Date.now() - 45000;
+      const before = classroomStudents.length;
+      classroomStudents = classroomStudents.filter(s => !s.lastSeen || Number(s.lastSeen) >= cutoff);
+      if (classroomStudents.length !== before) {
+        saveLocalTeacherRoster();
+        updateTeacherRankingTable();
+      }
+    }, 15000);
+
+    function logoutStudent() {
+      if (isTeacherMode || !studentLoggedIn) return;
+      saveStudentState(); // 계좌 잔액과 보유 종목은 보존하고, 접속 정보만 로그아웃 처리
+      const leavingStudent = { id: student.id, name: student.name, classNum: student.classNum, studentNum: student.studentNum };
+      broadcastMsg('STUDENT_LEAVE', { student: leavingStudent, leftAt: Date.now() });
+      studentLoggedIn = false;
+      clearInterval(studentHeartbeatTimer);
+      studentHeartbeatTimer = null;
+      try { localStorage.removeItem(LOCAL_LAST_STUDENT_KEY); } catch (e) {}
+      classroomStudents = classroomStudents.filter(s => s.id !== leavingStudent.id);
+      updateTeacherRankingTable();
+      student.id = '';
+      student.name = '';
+      student.cash = SEED_MONEY;
+      student.totalAsset = SEED_MONEY;
+      student.profitRate = 0;
+      student.portfolio = {};
+      student.tradeCount = 0;
+      const nameEl = document.getElementById('headerStudentName');
+      const classEl = document.getElementById('headerStudentClass');
+      if (nameEl) nameEl.textContent = '로그인 대기';
+      if (classEl) classEl.textContent = '계좌 미개설';
+      const logoutBtn = document.getElementById('studentLogoutBtn');
+      if (logoutBtn) logoutBtn.classList.add('hidden');
+      updateAssets();
+      document.getElementById('inputName').value = '';
+      document.getElementById('loginModal').classList.remove('hidden');
+      alertMessage('로그아웃되었습니다. 계좌 정보는 저장되어 있습니다.');
+    }
+
+    // 마지막 학생 정보는 QR 재접속 편의를 위해 저장하되, 로그아웃 시 삭제합니다.
     const LOCAL_LAST_STUDENT_KEY = 'krx_last_student_identity_v1';
 
     function tryAutoRestoreStudentLogin() {
@@ -3587,19 +3689,36 @@
       } catch (err) { console.warn('로컬 계정 저장 실패:', err); }
     }
 
-    window.addEventListener('pagehide', saveStudentState);
+    window.addEventListener('pagehide', () => {
+      saveStudentState();
+      if (!isTeacherMode && studentLoggedIn && student.id) {
+        // 페이지를 떠날 때 계좌 데이터는 보존하고 자동 로그인 정보만 제거합니다.
+        // 퇴장 메시지가 브라우저 종료 전에 전달되지 않는 경우에도 다음 접속은 로그인 화면부터 시작합니다.
+        const leavingStudent = { id: student.id, name: student.name, classNum: student.classNum, studentNum: student.studentNum };
+        try { localStorage.removeItem(LOCAL_LAST_STUDENT_KEY); } catch (e) {}
+        broadcastMsg('STUDENT_LEAVE', { student: leavingStudent, leftAt: Date.now() });
+        clearInterval(studentHeartbeatTimer);
+        studentHeartbeatTimer = null;
+        studentLoggedIn = false;
+      }
+    });
     document.addEventListener('visibilitychange', () => {
       if (document.visibilityState === 'hidden') saveStudentState();
     });
 
     async function handleLoginSubmit(e) {
       e.preventDefault();
-      const c = parseInt(document.getElementById('inputClass').value, 10) || 1;
+      const c = Math.max(1, Math.min(11, parseInt(document.getElementById('inputClass').value, 10) || 1));
       const n = parseInt(document.getElementById('inputNumber').value, 10) || 1;
       const name = document.getElementById('inputName').value.trim();
       if (!name) return;
 
       const newId = `std_${c}_${n}_${encodeURIComponent(name)}`;
+      if (studentLoggedIn && student.id && student.id !== newId) {
+        broadcastMsg('STUDENT_LEAVE', { student: { id: student.id, name: student.name, classNum: student.classNum, studentNum: student.studentNum }, leftAt: Date.now() });
+        clearInterval(studentHeartbeatTimer);
+        studentHeartbeatTimer = null;
+      }
       if (bannedStudents.some(b => b.id === newId)) {
         alertMessage('강퇴 처리된 계정입니다. 선생님께 문의하세요.');
         return;
@@ -3611,6 +3730,7 @@
       student.classNum = c;
       student.studentNum = n;
       student.name = name;
+      studentLoggedIn = true;
       // QR 재접속 때 같은 학생을 자동으로 찾을 수 있도록 마지막 학생 정보를 저장합니다.
       try {
         localStorage.setItem(LOCAL_LAST_STUDENT_KEY, JSON.stringify({ classNum: c, studentNum: n, name }));
@@ -3627,8 +3747,11 @@
       document.getElementById('headerStudentName').textContent = name;
       document.getElementById('headerStudentClass').textContent = `3학년 ${c}반 ${n}번`;
       document.getElementById('loginModal').classList.add('hidden');
+      const logoutBtn = document.getElementById('studentLogoutBtn');
+      if (logoutBtn) logoutBtn.classList.remove('hidden');
       updateAssets();
       saveStudentState();
+      startStudentHeartbeat();
 
       const idx = classroomStudents.findIndex(s => s.id === newId);
       if (idx >= 0) classroomStudents[idx] = { ...student };
@@ -3843,7 +3966,7 @@
       const m = document.getElementById('qrModal');
       m.classList.remove('hidden');
       const pills = document.getElementById('qrClassPills');
-      const classes = Array.from({ length: 20 }, (_, i) => `${i + 1}반`);
+      const classes = Array.from({ length: 11 }, (_, i) => `${i + 1}반`);
       pills.innerHTML = classes.map(c => `
         <button onclick="selectQRClass('${c}')" class="px-3 py-1 rounded-xl text-xs font-black transition cursor-pointer ${qrSelectedClass === c ? 'bg-indigo-600 text-white' : 'bg-white text-slate-700 border border-slate-200'}">${c}</button>
       `).join('');
@@ -3865,7 +3988,7 @@
     function buildQRUrls() {
       const targetClass = String(qrSelectedClass || '1반').trim();
       const classNumMatch = targetClass.match(/\d+/);
-      const classNum = classNumMatch ? Math.max(1, Math.min(20, parseInt(classNumMatch[0], 10))) : 1;
+      const classNum = classNumMatch ? Math.max(1, Math.min(11, parseInt(classNumMatch[0], 10))) : 1;
       const githubBaseUrl = 'https://kia6073-ux.github.io/sik/';
       // QR에는 숫자 반 번호를 사용해 브라우저/QR 인코더별 한글 URL 처리 차이를 없앱니다.
       const sep = githubBaseUrl.includes('?') ? '&' : '?';
