@@ -49,6 +49,9 @@
         <i class="fa-solid fa-qrcode"></i>
         <span id="headerRoomBadge">1반 QR코드</span>
       </button>
+      <button id="mqttTestBtn" onclick="runMqttConnectionTest()" class="hidden ml-1 px-2.5 py-1 rounded-lg bg-amber-50 hover:bg-amber-100 text-amber-800 text-xs font-black border border-amber-200 items-center gap-1.5 shadow-2xs transition cursor-pointer">
+        <i class="fa-solid fa-plug-circle-check"></i><span>MQTT 연결 테스트</span>
+      </button>
     </div>
 
     <!-- 실시간 인원 -->
@@ -2062,6 +2065,128 @@
       return true;
     }
 
+    function showMqttTestPanel(lines, state = 'running') {
+      let panel = document.getElementById('mqttTestPanel');
+      if (!panel) {
+        panel = document.createElement('div');
+        panel.id = 'mqttTestPanel';
+        panel.className = 'fixed bottom-4 right-4 z-[150] w-[min(420px,calc(100vw-2rem))] rounded-2xl border bg-white shadow-2xl p-4 text-sm';
+        document.body.appendChild(panel);
+      }
+      const border = state === 'ok' ? 'border-emerald-300' : state === 'fail' ? 'border-rose-300' : 'border-amber-300';
+      panel.className = `fixed bottom-4 right-4 z-[150] w-[min(420px,calc(100vw-2rem))] rounded-2xl border ${border} bg-white shadow-2xl p-4 text-sm`;
+      panel.innerHTML = '';
+      const header = document.createElement('div');
+      header.className = 'flex items-center justify-between gap-3 mb-2';
+      const title = document.createElement('strong');
+      title.className = 'font-black text-slate-900';
+      title.textContent = 'MQTT 연결 테스트 결과';
+      const close = document.createElement('button');
+      close.className = 'text-slate-500 hover:text-slate-900 font-bold px-2';
+      close.textContent = '닫기';
+      close.onclick = () => panel.remove();
+      header.append(title, close);
+      const body = document.createElement('div');
+      body.className = 'whitespace-pre-line text-slate-700 leading-6';
+      body.textContent = lines.join('\n');
+      panel.append(header, body);
+    }
+
+    function runMqttConnectionTest() {
+      const btn = document.getElementById('mqttTestBtn');
+      if (btn?.dataset.testing === '1') return;
+      if (!window.mqtt || typeof window.mqtt.connect !== 'function') {
+        showMqttTestPanel(['❌ MQTT 라이브러리: 로드 실패', '인터넷 연결 또는 MQTT.js CDN 접근을 확인하세요.'], 'fail');
+        return;
+      }
+      if (btn) {
+        btn.dataset.testing = '1';
+        btn.disabled = true;
+        btn.classList.add('opacity-60');
+        const label = btn.querySelector('span');
+        if (label) label.textContent = '테스트 중…';
+      }
+      const token = Math.random().toString(36).slice(2, 10);
+      const clientId = `krxtest_${token}`.slice(0, 23);
+      const topic = `krx_mqtt_test/${token}`;
+      const payload = JSON.stringify({ test: token, at: Date.now() });
+      const lines = [
+        '대상 서버: broker.hivemq.com:8884 (WSS)',
+        '① MQTT.js 라이브러리: 정상',
+        '② 서버 연결: 확인 중…',
+        '③ 테스트 토픽 구독: 대기 중…',
+        '④ 테스트 메시지 발행: 대기 중…',
+        '⑤ 발행 메시지 수신: 대기 중…'
+      ];
+      showMqttTestPanel(lines, 'running');
+      let client = null;
+      let finished = false;
+      let connectDone = false;
+      let subscribed = false;
+      let published = false;
+      const timeout = setTimeout(() => finish(false, '시간 초과: 서버 연결 또는 메시지 왕복이 15초 안에 완료되지 않았습니다.'), 15000);
+      function finish(ok, extra) {
+        if (finished) return;
+        finished = true;
+        clearTimeout(timeout);
+        if (extra) lines.push((ok ? 'ℹ️ ' : '❌ ') + extra);
+        if (client) { try { client.end(true); } catch (e) {} }
+        showMqttTestPanel(lines, ok ? 'ok' : 'fail');
+        if (btn) {
+          btn.dataset.testing = '0';
+          btn.disabled = false;
+          btn.classList.remove('opacity-60');
+          const label = btn.querySelector('span');
+          if (label) label.textContent = 'MQTT 연결 테스트';
+        }
+      }
+      try {
+        client = window.mqtt.connect(MQTT_BROKERS[0], {
+          clientId, clean: true, connectTimeout: 10000, reconnectPeriod: 0,
+          keepalive: 15, protocolVersion: 4
+        });
+        client.on('connect', () => {
+          if (finished) return;
+          connectDone = true;
+          lines[2] = '② 서버 연결: 성공';
+          lines[3] = '③ 테스트 토픽 구독: 진행 중…';
+          showMqttTestPanel(lines, 'running');
+          client.subscribe(topic, { qos: 1 }, (err) => {
+            if (finished) return;
+            if (err) { lines[3] = '③ 테스트 토픽 구독: 실패'; finish(false, err.message || '구독 오류'); return; }
+            subscribed = true;
+            lines[3] = '③ 테스트 토픽 구독: 성공';
+            lines[4] = '④ 테스트 메시지 발행: 진행 중…';
+            showMqttTestPanel(lines, 'running');
+            client.publish(topic, payload, { qos: 1, retain: false }, (pubErr) => {
+              if (finished) return;
+              if (pubErr) { lines[4] = '④ 테스트 메시지 발행: 실패'; finish(false, pubErr.message || '발행 오류'); return; }
+              published = true;
+              lines[4] = '④ 테스트 메시지 발행: 성공';
+              lines[5] = '⑤ 발행 메시지 수신: 대기 중…';
+              showMqttTestPanel(lines, 'running');
+            });
+          });
+        });
+        client.on('message', (receivedTopic, message) => {
+          if (finished || receivedTopic !== topic) return;
+          if (message.toString() !== payload) return;
+          lines[5] = '⑤ 발행 메시지 수신: 성공';
+          finish(connectDone && subscribed && published, '모든 단계가 완료되어 MQTT 메시지 왕복을 확인했습니다.');
+        });
+        client.on('error', (err) => {
+          if (finished) return;
+          if (!connectDone) lines[2] = '② 서버 연결: 실패';
+          finish(false, `오류: ${err?.message || '알 수 없는 MQTT 오류'}`);
+        });
+        client.on('close', () => {
+          if (!finished && !connectDone) finish(false, '연결이 닫혔습니다. 방화벽, 네트워크 또는 브로커 상태를 확인하세요.');
+        });
+      } catch (err) {
+        finish(false, `테스트 시작 실패: ${err?.message || err}`);
+      }
+    }
+
     function setMqttStatus(text, ok = false) {
       const els = document.querySelectorAll('[data-mqtt-status]');
       els.forEach(el => {
@@ -3554,6 +3679,8 @@
         document.getElementById('roleBadge').className = 'px-1.5 py-0.5 rounded text-[11px] font-extrabold bg-rose-50 text-rose-700 border border-rose-200';
         const qrBtn = document.getElementById('headerQRBtn');
         if (qrBtn) qrBtn.classList.remove('hidden');
+        const mqttTestBtn = document.getElementById('mqttTestBtn');
+        if (mqttTestBtn) mqttTestBtn.classList.remove('hidden');
         updateTeacherRankingTable();
       }
     }
@@ -3570,6 +3697,8 @@
 
       const qrBtn = document.getElementById('headerQRBtn');
       if (qrBtn) qrBtn.classList.remove('hidden');
+      const mqttTestBtn = document.getElementById('mqttTestBtn');
+      if (mqttTestBtn) mqttTestBtn.classList.remove('hidden');
 
       classroomStudents = classroomStudents.filter(s => s.name !== '선생님 (교사)' && !s.id?.startsWith('teacher_'));
       updateTeacherRankingTable();
