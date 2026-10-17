@@ -1376,6 +1376,7 @@
     let mqttClient = null;
     let mqttConnecting = false;
     let mqttSubscribed = false;
+    let mqttSubscribedRole = null; // 실제 MQTT 구독 당시의 역할(student/teacher)
     let mqttRetryTimer = null;
     let mqttPendingPackets = [];
     // 모든 기기가 같은 브로커를 사용해야 교사와 학생이 서로 다른 메시지 공간으로 분리되지 않습니다.
@@ -2260,6 +2261,7 @@
       setMqttStatus('실시간 연결 중…', false);
 
       try {
+        const connectingAsTeacher = !!isTeacherMode;
         const topics = getMqttTopicsForClient();
         const topicSet = new Set(topics);
         const brokerUrl = MQTT_BROKERS[0];
@@ -2284,12 +2286,14 @@
           mqttClient.subscribe(topics, { qos: 1 }, (err) => {
             if (err) {
               mqttSubscribed = false;
+              mqttSubscribedRole = null;
               setMqttStatus('채널 구독 실패 · 재연결 중…', false);
               try { mqttClient.end(true); } catch (e) {}
               scheduleMqttRetry();
               return;
             }
             mqttSubscribed = true;
+            mqttSubscribedRole = connectingAsTeacher ? 'teacher' : 'student';
             setMqttStatus('실시간 연결됨', true);
             flushMqttPendingPackets();
             if (!isTeacherMode && student.name) {
@@ -2311,6 +2315,7 @@
         mqttClient.on('error', (err) => {
           mqttConnecting = false;
           mqttSubscribed = false;
+          mqttSubscribedRole = null;
           const msg = err && err.message ? err.message : '연결 오류';
           setMqttStatus('실시간 오류 · 재연결 중…', false);
           scheduleMqttRetry();
@@ -2319,6 +2324,7 @@
         mqttClient.on('close', () => {
           mqttConnecting = false;
           mqttSubscribed = false;
+          mqttSubscribedRole = null;
           setMqttStatus('실시간 연결 끊김 · 같은 서버 재연결 중…', false);
           scheduleMqttRetry();
         });
@@ -2382,10 +2388,23 @@
     }
 
 
-    function showStudentJoinNotice(std) {
+    const studentPresenceNoticeTimes = new Map();
+    function showStudentPresenceNotice(std, action = 'join') {
       const name = String(std?.name || '학생');
       const classNum = std?.classNum ? `${std.classNum}반` : selectedClass;
-      const id = `studentJoinNotice_${Date.now()}_${Math.random().toString(36).slice(2, 7)}`;
+      const studentId = String(std?.id || `${classNum}:${name}`);
+      const now = Date.now();
+      // 입장 메시지는 재연결 시 중복 발행될 수 있으므로 같은 학생의 4초 이내 중복 팝업은 합칩니다.
+      const dedupeKey = `${action}:${studentId}`;
+      const previousAt = studentPresenceNoticeTimes.get(dedupeKey) || 0;
+      if (now - previousAt < 4000) return;
+      studentPresenceNoticeTimes.set(dedupeKey, now);
+      if (studentPresenceNoticeTimes.size > 300) {
+        for (const [key, at] of studentPresenceNoticeTimes) if (now - at > 30000) studentPresenceNoticeTimes.delete(key);
+      }
+
+      const isJoin = action === 'join';
+      const id = `studentPresenceNotice_${now}_${Math.random().toString(36).slice(2, 7)}`;
       let stack = document.getElementById('studentJoinNoticeStack');
       if (!stack) {
         stack = document.createElement('div');
@@ -2396,21 +2415,21 @@
 
       const el = document.createElement('div');
       el.id = id;
-      el.className = 'bg-white border border-emerald-200 shadow-2xl rounded-2xl p-3 flex items-start gap-3 pointer-events-auto';
+      el.className = `bg-white border ${isJoin ? 'border-emerald-200' : 'border-amber-200'} shadow-2xl rounded-2xl p-3 flex items-start gap-3 pointer-events-auto`;
       const iconBox = document.createElement('div');
-      iconBox.className = 'w-9 h-9 rounded-xl bg-emerald-100 text-emerald-700 flex items-center justify-center flex-shrink-0';
-      iconBox.innerHTML = '<i class="fa-solid fa-user-plus"></i>';
+      iconBox.className = `w-9 h-9 rounded-xl ${isJoin ? 'bg-emerald-100 text-emerald-700' : 'bg-amber-100 text-amber-700'} flex items-center justify-center flex-shrink-0`;
+      iconBox.innerHTML = isJoin ? '<i class="fa-solid fa-user-plus"></i>' : '<i class="fa-solid fa-user-minus"></i>';
       const content = document.createElement('div');
       content.className = 'min-w-0 flex-1';
       const heading = document.createElement('div');
-      heading.className = 'text-xs font-black text-emerald-700';
-      heading.textContent = '학생 입장 알림';
+      heading.className = `text-xs font-black ${isJoin ? 'text-emerald-700' : 'text-amber-700'}`;
+      heading.textContent = isJoin ? '학생 입장 알림' : '학생 퇴장 알림';
       const studentName = document.createElement('div');
       studentName.className = 'text-sm font-black text-slate-900 break-words';
       studentName.textContent = name;
       const detail = document.createElement('div');
       detail.className = 'text-[11px] text-slate-500';
-      detail.textContent = `${classNum} 학생이 입장했습니다.`;
+      detail.textContent = `${classNum} 학생이 ${isJoin ? '입장했습니다.' : '퇴장했습니다.'}`;
       content.append(heading, studentName, detail);
       const close = document.createElement('button');
       close.type = 'button';
@@ -2421,7 +2440,6 @@
       el.append(iconBox, content, close);
       stack.appendChild(el);
 
-      // 연속 입장 시에도 각 학생의 알림이 겹쳐 사라지지 않도록 개별 관리합니다.
       setTimeout(() => {
         el.remove();
         if (stack && !stack.children.length) stack.remove();
@@ -2429,7 +2447,7 @@
 
       try {
         if ('Notification' in window && Notification.permission === 'granted') {
-          new Notification('KRX 모의주식 - 학생 입장', { body: `${name} (${classNum}) 학생이 입장했습니다.` });
+          new Notification(`KRX 모의주식 - 학생 ${isJoin ? '입장' : '퇴장'}`, { body: `${name} (${classNum}) 학생이 ${isJoin ? '입장했습니다.' : '퇴장했습니다.'}` });
         }
       } catch (e) {}
     }
@@ -2620,6 +2638,8 @@
       } else if (type === 'STUDENT_LEAVE' && payload?.student) {
         const leaving = payload.student;
         if (isTeacherMode && leaving.id) {
+          const knownStudent = classroomStudents.find(s => s.id === leaving.id) || leaving;
+          showStudentPresenceNotice(knownStudent, 'leave');
           classroomStudents = classroomStudents.filter(s => s.id !== leaving.id);
           saveLocalTeacherRoster();
           updateTeacherRankingTable();
@@ -2666,7 +2686,7 @@
 
         // 교사 화면에 새 학생 입장 즉시 알림
         if (type === 'STUDENT_JOIN' && isTeacherMode) {
-          showStudentJoinNotice(std);
+          showStudentPresenceNotice(std, 'join');
         }
 
         // 새 학생 입장 시 교사가 보유한 최신 시장 상태를 즉시 전송
@@ -3699,6 +3719,7 @@
           mqttClient = null;
           mqttConnecting = false;
           mqttSubscribed = false;
+          mqttSubscribedRole = null;
           clearTimeout(mqttRetryTimer);
           mqttRetryTimer = null;
           initMqtt();
@@ -3730,6 +3751,21 @@
 
       classroomStudents = classroomStudents.filter(s => s.name !== '선생님 (교사)' && !s.id?.startsWith('teacher_'));
       updateTeacherRankingTable();
+
+      // isTeacherMode가 먼저 true로 바뀌므로 toggleTeacherModal의 역할 변경 감지만으로는
+      // 학생용 토픽 구독을 교사용 전체 반+제어 토픽 구독으로 전환하지 못할 수 있습니다.
+      // 실제 구독 역할을 확인하고 다르면 기존 연결을 종료한 뒤 교사 구독으로 다시 연결합니다.
+      if (mqttSubscribedRole !== 'teacher') {
+        clearTimeout(mqttRetryTimer);
+        mqttRetryTimer = null;
+        const oldClient = mqttClient;
+        mqttClient = null;
+        mqttConnecting = false;
+        mqttSubscribed = false;
+        mqttSubscribedRole = null;
+        try { if (oldClient) oldClient.end(true); } catch (e) {}
+        setTimeout(() => initMqtt(), 80);
+      }
       toggleTeacherModal(true);
     }
 
