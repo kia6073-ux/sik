@@ -2545,18 +2545,19 @@
         selectStock(selectedStockId);
         updateAssets();
       } else if (type === 'TIMER_TICK' && payload) {
-        // 학생은 지연 도착한 초 단위 메시지를 그대로 표시하지 않고 전송 시각만큼 보정합니다.
+        // 중요: teacher와 student의 PC 시계는 몇 초씩 다를 수 있으므로,
+        // teacher의 epoch timestamp와 student의 Date.now()를 빼서 보정하지 않습니다.
+        // 메시지 수신 시점의 remaining seconds를 기준으로 학생 기기에서 로컬 카운트다운합니다.
         if (!isTeacherMode) {
-          const sentAt = Number(packet.timestamp || payload.sentAt || Date.now());
-          if (sentAt < lastTimerSyncTimestamp) return; // 오래된 패킷으로 시계가 되돌아가지 않게 함
-          lastTimerSyncTimestamp = sentAt;
+          const sentAt = Number(packet.timestamp || payload.sentAt || 0);
+          if (sentAt && sentAt < lastTimerSyncTimestamp) return; // 늦게 도착한 오래된 패킷 무시
+          if (sentAt) lastTimerSyncTimestamp = sentAt;
           const oldState = marketState;
           // 학생은 서킷브레이커 중 임의로 정상장(ACTIVE)으로 복귀할 수 없습니다.
           if (!(circuitBreakerTriggeredAt && payload.state === 'ACTIVE')) {
             marketState = payload.state;
           }
-          const elapsed = marketState === 'ACTIVE' ? Math.max(0, Math.floor((Date.now() - sentAt) / 1000)) : 0;
-          marketSeconds = Math.max(0, Number(payload.seconds || 0) - elapsed);
+          marketSeconds = Math.max(0, Number(payload.seconds ?? 0));
           studentTimerAnchorSeconds = marketSeconds;
           studentTimerAnchorAt = Date.now();
           updateTimerDisplay();
@@ -2568,16 +2569,17 @@
         }
       } else if (type === 'MARKET_STATE_SYNC' && payload) {
         if (!isTeacherMode) {
-          // CB 발동 중에는 학생 측에서 ACTIVE 상태를 받아도 정상장으로 복귀시키지 않습니다.
+          // CB 발동 중에는 학생 측에서 ACTIVE 상태를 받아도 정상장(ACTIVE)으로 복귀시키지 않습니다.
           const isCbEnd = payload.stabilizer === 'CB_END';
-          const sentAt = Number(packet.timestamp || Date.now());
-          if (sentAt < lastTimerSyncTimestamp) return;
+          const sentAt = Number(packet.timestamp || 0);
+          if (sentAt && sentAt < lastTimerSyncTimestamp) return;
           if (circuitBreakerTriggeredAt && payload.marketState === 'ACTIVE' && !isCbEnd) return;
-          lastTimerSyncTimestamp = sentAt;
+          if (sentAt) lastTimerSyncTimestamp = sentAt;
           marketState = payload.marketState;
           if (typeof payload.marketSeconds === 'number') {
-            const elapsed = marketState === 'ACTIVE' ? Math.max(0, Math.floor((Date.now() - sentAt) / 1000)) : 0;
-            marketSeconds = Math.max(0, payload.marketSeconds - elapsed);
+            // 기기 간 시스템 시각 차이로 countdown이 2~3초씩 건너뛰지 않도록
+            // 수신 시각을 로컬 기준점으로 사용합니다.
+            marketSeconds = Math.max(0, payload.marketSeconds);
             studentTimerAnchorSeconds = marketSeconds;
             studentTimerAnchorAt = Date.now();
           }
