@@ -2107,30 +2107,45 @@
         if (label) label.textContent = '테스트 중…';
       }
       const token = Math.random().toString(36).slice(2, 10);
-      const clientId = `krxtest_${token}`.slice(0, 23);
+      const clientId = `krxtest_${Date.now().toString(36)}_${token}`.slice(0, 23);
       const topic = `krx_mqtt_test/${token}`;
       const payload = JSON.stringify({ test: token, at: Date.now() });
+      const reuseExisting = !!(mqttClient && mqttClient.connected);
       const lines = [
         '대상 서버: broker.hivemq.com:8884 (WSS)',
         '① MQTT.js 라이브러리: 정상',
-        '② 서버 연결: 확인 중…',
+        `② 서버 연결: ${reuseExisting ? '기존 앱 연결 사용' : '새 연결 시도 중…'}`,
         '③ 테스트 토픽 구독: 대기 중…',
         '④ 테스트 메시지 발행: 대기 중…',
         '⑤ 발행 메시지 수신: 대기 중…'
       ];
       showMqttTestPanel(lines, 'running');
       let client = null;
+      let ownsClient = false;
       let finished = false;
-      let connectDone = false;
+      let connectDone = reuseExisting;
       let subscribed = false;
       let published = false;
-      const timeout = setTimeout(() => finish(false, '시간 초과: 서버 연결 또는 메시지 왕복이 15초 안에 완료되지 않았습니다.'), 15000);
+      let timeout = null;
+      let onConnect, onMessage, onError, onClose;
+
+      function cleanup() {
+        if (timeout) clearTimeout(timeout);
+        if (!client) return;
+        try {
+          if (onConnect) client.removeListener('connect', onConnect);
+          if (onMessage) client.removeListener('message', onMessage);
+          if (onError) client.removeListener('error', onError);
+          if (onClose) client.removeListener('close', onClose);
+        } catch (e) {}
+        if (subscribed) { try { client.unsubscribe(topic); } catch (e) {} }
+        if (ownsClient) { try { client.end(true); } catch (e) {} }
+      }
       function finish(ok, extra) {
         if (finished) return;
         finished = true;
-        clearTimeout(timeout);
+        cleanup();
         if (extra) lines.push((ok ? 'ℹ️ ' : '❌ ') + extra);
-        if (client) { try { client.end(true); } catch (e) {} }
         showMqttTestPanel(lines, ok ? 'ok' : 'fail');
         if (btn) {
           btn.dataset.testing = '0';
@@ -2140,51 +2155,64 @@
           if (label) label.textContent = 'MQTT 연결 테스트';
         }
       }
-      try {
-        client = window.mqtt.connect(MQTT_BROKERS[0], {
-          clientId, clean: true, connectTimeout: 10000, reconnectPeriod: 0,
-          keepalive: 15, protocolVersion: 4
-        });
-        client.on('connect', () => {
+      function beginRoundTrip() {
+        if (finished || !client || !client.connected) return;
+        lines[2] = '② 서버 연결: 성공';
+        lines[3] = '③ 테스트 토픽 구독: 진행 중…';
+        showMqttTestPanel(lines, 'running');
+        client.subscribe(topic, { qos: 0 }, (err) => {
           if (finished) return;
-          connectDone = true;
-          lines[2] = '② 서버 연결: 성공';
-          lines[3] = '③ 테스트 토픽 구독: 진행 중…';
+          if (err) { lines[3] = '③ 테스트 토픽 구독: 실패'; finish(false, `구독 오류: ${err.message || '알 수 없는 오류'}`); return; }
+          subscribed = true;
+          lines[3] = '③ 테스트 토픽 구독: 성공';
+          lines[4] = '④ 테스트 메시지 발행: 진행 중…';
           showMqttTestPanel(lines, 'running');
-          client.subscribe(topic, { qos: 1 }, (err) => {
+          client.publish(topic, payload, { qos: 0, retain: false }, (pubErr) => {
             if (finished) return;
-            if (err) { lines[3] = '③ 테스트 토픽 구독: 실패'; finish(false, err.message || '구독 오류'); return; }
-            subscribed = true;
-            lines[3] = '③ 테스트 토픽 구독: 성공';
-            lines[4] = '④ 테스트 메시지 발행: 진행 중…';
+            if (pubErr) { lines[4] = '④ 테스트 메시지 발행: 실패'; finish(false, `발행 오류: ${pubErr.message || '알 수 없는 오류'}`); return; }
+            published = true;
+            lines[4] = '④ 테스트 메시지 발행: 성공';
+            lines[5] = '⑤ 발행 메시지 수신: 대기 중…';
             showMqttTestPanel(lines, 'running');
-            client.publish(topic, payload, { qos: 1, retain: false }, (pubErr) => {
-              if (finished) return;
-              if (pubErr) { lines[4] = '④ 테스트 메시지 발행: 실패'; finish(false, pubErr.message || '발행 오류'); return; }
-              published = true;
-              lines[4] = '④ 테스트 메시지 발행: 성공';
-              lines[5] = '⑤ 발행 메시지 수신: 대기 중…';
-              showMqttTestPanel(lines, 'running');
-            });
           });
         });
-        client.on('message', (receivedTopic, message) => {
-          if (finished || receivedTopic !== topic) return;
-          if (message.toString() !== payload) return;
+      }
+      try {
+        if (reuseExisting) {
+          client = mqttClient;
+        } else {
+          client = window.mqtt.connect(MQTT_BROKERS[0], {
+            clientId, clean: true, connectTimeout: 20000, reconnectPeriod: 0,
+            keepalive: 30, protocolVersion: 4, rejectUnauthorized: true
+          });
+          ownsClient = true;
+        }
+        onConnect = () => { if (!finished) { connectDone = true; beginRoundTrip(); } };
+        onMessage = (receivedTopic, message) => {
+          if (finished || receivedTopic !== topic || message.toString() !== payload) return;
           lines[5] = '⑤ 발행 메시지 수신: 성공';
-          finish(connectDone && subscribed && published, '모든 단계가 완료되어 MQTT 메시지 왕복을 확인했습니다.');
-        });
-        client.on('error', (err) => {
+          finish(connectDone && subscribed && published, 'MQTT 메시지 왕복 확인 완료');
+        };
+        onError = (err) => {
           if (finished) return;
           if (!connectDone) lines[2] = '② 서버 연결: 실패';
           finish(false, `오류: ${err?.message || '알 수 없는 MQTT 오류'}`);
-        });
-        client.on('close', () => {
-          if (!finished && !connectDone) finish(false, '연결이 닫혔습니다. 방화벽, 네트워크 또는 브로커 상태를 확인하세요.');
-        });
-      } catch (err) {
-        finish(false, `테스트 시작 실패: ${err?.message || err}`);
-      }
+        };
+        onClose = () => {
+          if (!finished && !connectDone) finish(false, '연결이 닫혔습니다. 네트워크 또는 브로커 상태를 확인하세요.');
+        };
+        client.on('message', onMessage);
+        client.on('error', onError);
+        client.on('close', onClose);
+        if (reuseExisting) beginRoundTrip();
+        else client.on('connect', onConnect);
+        timeout = setTimeout(() => {
+          if (!connectDone) finish(false, 'CONNACK 시간 초과: 이 페이지의 MQTT 연결이 서버 승인 응답을 받지 못했습니다.');
+          else if (!subscribed) finish(false, '구독 단계 시간 초과');
+          else if (!published) finish(false, '발행 단계 시간 초과');
+          else finish(false, '메시지 수신 시간 초과: 구독과 발행은 됐지만 왕복 메시지를 받지 못했습니다.');
+        }, 25000);
+      } catch (err) { finish(false, `테스트 시작 실패: ${err?.message || err}`); }
     }
 
     function setMqttStatus(text, ok = false) {
