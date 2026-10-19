@@ -1808,12 +1808,12 @@
     let lastNewsCycleTime = 0;
 
     function initTimers() {
-      // 1. 주가 틱 타이머 (교사 마스터만 계산하여 브로드캐스트)
-      setInterval(() => {
-        if (!isTeacherMode) return;
-        if (marketState !== 'ACTIVE') return;
-
-        const updates = [];
+      // 1. 주가 틱 타이머: 20~25초의 무작위 간격으로 교사 마스터만 계산하여 브로드캐스트
+      const scheduleNextMarketTick = () => {
+        const delay = Math.floor(Math.random() * 5001) + 20000; // 20,000~25,000ms
+        setTimeout(() => {
+          if (isTeacherMode && marketState === 'ACTIVE') {
+            const updates = [];
         ALL_STOCKS.forEach(s => {
           const tick = getKrxTickSize(s.price);
           const dir = (Math.random() - 0.495) > 0 ? 1 : -1;
@@ -1826,18 +1826,22 @@
           updates.push({ id: s.id, p: s.price, d: s.diff, r: s.rate });
         });
 
-        // 차트 과거 탐색 중이면 offset 조정
-        if (chartHistoryOffset > 0) {
-          const curStock = ALL_STOCKS.find(st => st.id === selectedStockId);
-          if (curStock) chartHistoryOffset = Math.min(curStock.history.length - 10, chartHistoryOffset + 1);
-        }
+            // 차트 과거 탐색 중이면 offset 조정
+            if (chartHistoryOffset > 0) {
+              const curStock = ALL_STOCKS.find(st => st.id === selectedStockId);
+              if (curStock) chartHistoryOffset = Math.min(curStock.history.length - 10, chartHistoryOffset + 1);
+            }
 
-        selectStock(selectedStockId, false);
-        updateAssets();
+            selectStock(selectedStockId, false);
+            updateAssets();
 
-        // 전교생에게 시세 패킷 브로드캐스트
-        broadcastMsg('MARKET_TICKS', { ticks: updates });
-      }, 2500);
+            // 전교생에게 시세 패킷 브로드캐스트
+            broadcastMsg('MARKET_TICKS', { ticks: updates });
+          }
+          scheduleNextMarketTick();
+        }, delay);
+      };
+      scheduleNextMarketTick();
 
       // 2. 코스피 변동: 10~20초 사이의 랜덤한 간격으로 지수와 전체 종목을 함께 움직임
       const scheduleNextKospiTick = () => {
