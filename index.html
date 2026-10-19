@@ -1348,9 +1348,14 @@
     let marketSeconds = 10 * 60;
     let marketState = 'WAITING'; // WAITING, ACTIVE, PAUSED, CLOSED
     // 학생 화면은 마지막 교사 타이머 패킷을 기준으로 로컬에서 초를 계산해 통신 지연 중에도 멈추지 않게 합니다.
-    let studentTimerAnchorSeconds = null;
+    // 타이머는 교사 PC의 monotonic clock(performance.now)을 기준으로 계산합니다.
+    let studentTimerAnchorMs = null;
     let studentTimerAnchorAt = 0;
     let lastTimerSyncTimestamp = 0;
+    let teacherTimerAnchorMs = null;
+    let teacherTimerAnchorAt = 0;
+    let teacherTimerLastState = null;
+    let teacherTimerLastPublishedSecond = null;
     let isTeacherMode = false;
     let selectedClass = '1반';
     let qrSelectedClass = '1반';
@@ -1857,36 +1862,76 @@
       };
       scheduleNextKospiTick();
 
-            // 3. 장 카운트다운 타이머 (교사는 기준 시각 전송, 학생은 로컬 보간)
+            // 3. 장 카운트다운: 교사 PC의 performance.now()를 기준으로 계산합니다.
+      // 학생은 교사가 보낸 남은 밀리초를 기준점으로 삼아 로컬에서 부드럽게 표시합니다.
       setInterval(() => {
         if (!isTeacherMode) {
-          if (studentTimerAnchorSeconds !== null && marketState === 'ACTIVE') {
-            const elapsed = Math.floor((Date.now() - studentTimerAnchorAt) / 1000);
-            const nextSeconds = Math.max(0, studentTimerAnchorSeconds - elapsed);
-            if (nextSeconds !== marketSeconds) { marketSeconds = nextSeconds; updateTimerDisplay(); }
+          if (studentTimerAnchorMs !== null && marketState === 'ACTIVE') {
+            const elapsedMs = Math.max(0, performance.now() - studentTimerAnchorAt);
+            const nextSeconds = Math.max(0, Math.ceil((studentTimerAnchorMs - elapsedMs) / 1000));
+            if (nextSeconds !== marketSeconds) {
+              marketSeconds = nextSeconds;
+              updateTimerDisplay();
+            }
           }
           return;
         }
-        if (marketState === 'ACTIVE') {
-          if (marketSeconds > 0) {
-            marketSeconds--;
-            updateTimerDisplay();
-            broadcastMsg('TIMER_TICK', { seconds: marketSeconds, state: marketState, sentAt: Date.now() });
 
-            // 종목 뉴스는 10~20초 사이의 랜덤한 간격으로 발생
-            const nowTime = Date.now();
-            if (nowTime - lastNewsCycleTime >= 10000) {
-              lastNewsCycleTime = nowTime;
-              generateLiveStockNews();
-            }
-          } else {
-            marketState = 'CLOSED';
+        const nowPerf = performance.now();
+        if (marketState === 'ACTIVE') {
+          if (teacherTimerLastState !== 'ACTIVE' || teacherTimerAnchorMs === null) {
+            teacherTimerAnchorMs = Math.max(0, marketSeconds * 1000);
+            teacherTimerAnchorAt = nowPerf;
+          }
+          const elapsedMs = Math.max(0, nowPerf - teacherTimerAnchorAt);
+          const remainingMs = Math.max(0, teacherTimerAnchorMs - elapsedMs);
+          const nextSeconds = Math.max(0, Math.ceil(remainingMs / 1000));
+          if (nextSeconds !== marketSeconds) {
+            marketSeconds = nextSeconds;
             updateTimerDisplay();
-            broadcastMsg('TIMER_TICK', { seconds: 0, state: 'CLOSED', sentAt: Date.now() });
+          }
+
+          if (teacherTimerLastPublishedSecond !== marketSeconds || teacherTimerLastState !== 'ACTIVE') {
+            teacherTimerLastPublishedSecond = marketSeconds;
+            broadcastMsg('TIMER_TICK', {
+              seconds: marketSeconds,
+              remainingMs,
+              state: marketState,
+              timerSeq: Math.floor((marketConfigMinutes * 60 * 1000 - remainingMs)),
+              sentAt: Date.now()
+            });
+          }
+
+          // 종목 뉴스는 10~20초 사이의 랜덤한 간격으로 발생
+          const nowTime = Date.now();
+          if (nowTime - lastNewsCycleTime >= 10000) {
+            lastNewsCycleTime = nowTime;
+            generateLiveStockNews();
+          }
+
+          if (remainingMs <= 0) {
+            marketSeconds = 0;
+            marketState = 'CLOSED';
+            teacherTimerAnchorMs = 0;
+            teacherTimerLastPublishedSecond = 0;
+            updateTimerDisplay();
+            broadcastMsg('TIMER_TICK', { seconds: 0, remainingMs: 0, state: 'CLOSED', sentAt: Date.now() });
             showMarketClosedModal();
           }
+        } else {
+          // ACTIVE에서 PAUSED/WAITING/CLOSED로 전환될 때 마지막 남은 시간을 고정합니다.
+          if (teacherTimerLastState === 'ACTIVE' && teacherTimerAnchorMs !== null) {
+            const elapsedMs = Math.max(0, nowPerf - teacherTimerAnchorAt);
+            const remainingMs = Math.max(0, teacherTimerAnchorMs - elapsedMs);
+            marketSeconds = Math.max(0, Math.ceil(remainingMs / 1000));
+            teacherTimerAnchorMs = marketSeconds * 1000;
+            updateTimerDisplay();
+            broadcastMsg('TIMER_TICK', { seconds: marketSeconds, remainingMs: teacherTimerAnchorMs, state: marketState, sentAt: Date.now() });
+          }
         }
-      }, 1000);
+        teacherTimerLastState = marketState;
+      }, 100);
+
     }
 
     // Supabase 대체용 로컬 영속 저장: 현재 브라우저/기기에서만 복원됩니다.
@@ -2558,12 +2603,14 @@
             marketState = payload.state;
           }
           marketSeconds = Math.max(0, Number(payload.seconds ?? 0));
-          studentTimerAnchorSeconds = marketSeconds;
-          studentTimerAnchorAt = Date.now();
+          studentTimerAnchorMs = Number.isFinite(Number(payload.remainingMs))
+            ? Math.max(0, Number(payload.remainingMs))
+            : marketSeconds * 1000;
+          studentTimerAnchorAt = performance.now();
           updateTimerDisplay();
 
           if (oldState !== 'CLOSED' && payload.state === 'CLOSED') {
-            studentTimerAnchorSeconds = 0;
+            studentTimerAnchorMs = 0;
             showMarketClosedModal();
           }
         }
@@ -2580,8 +2627,8 @@
             // 기기 간 시스템 시각 차이로 countdown이 2~3초씩 건너뛰지 않도록
             // 수신 시각을 로컬 기준점으로 사용합니다.
             marketSeconds = Math.max(0, payload.marketSeconds);
-            studentTimerAnchorSeconds = marketSeconds;
-            studentTimerAnchorAt = Date.now();
+            studentTimerAnchorMs = marketSeconds * 1000;
+            studentTimerAnchorAt = performance.now();
           }
           if (typeof payload.marketConfigMinutes === 'number') marketConfigMinutes = payload.marketConfigMinutes;
           if (typeof payload.seedMoney === 'number') setSeedMoney(payload.seedMoney);
@@ -3524,6 +3571,10 @@
     }
 
     function teacherRestartMarket() {
+      teacherTimerAnchorMs = marketConfigMinutes * 60 * 1000;
+      teacherTimerAnchorAt = performance.now();
+      teacherTimerLastState = 'WAITING';
+      teacherTimerLastPublishedSecond = null;
       marketSeconds = marketConfigMinutes * 60;
       marketState = 'WAITING';
       scheduleLocalMarketSave();
