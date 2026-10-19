@@ -4059,7 +4059,7 @@
       broadcastMsg('REQUEST_SYNC', { clientId: myClientId });
 
       // 이미 연결되어 있다면 즉시 한 번 더 확실하게 입장 알림
-      if (mqttClient && mqttClient.isConnected()) {
+      if (mqttClient && mqttClient.connected && mqttSubscribed) {
         setTimeout(() => {
           broadcastMsg('STUDENT_JOIN', { student: { ...student }, joinedAt: Date.now() });
         }, 150);
